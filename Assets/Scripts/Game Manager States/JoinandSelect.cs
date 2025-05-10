@@ -124,7 +124,7 @@ public class JoinandSelect : IGameState
                         //gameManager.playerSlot[j].GetComponent<LocalPlayer>().myCamera = camera;
 
                         //displayObject.transform.position = new Vector3(0, 2, 0);
-                        //gameManager.playerSlot[j].GetComponent<LocalPlayer>().movement = new Movement(gameManager.playerSlot[j].GetComponent<LocalPlayer>());
+                        //gameManager.playerSlot[j].GetComponent<LocalPlayer>().movementController = new Movement(gameManager.playerSlot[j].GetComponent<LocalPlayer>());
                     }
                 }
 

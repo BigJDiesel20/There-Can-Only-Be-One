@@ -44,7 +44,7 @@ namespace Rewired.Demos {
         }
 
         private void ProcessInput() {
-            // Process movement
+            // Process movementController
             if(moveVector.x != 0.0f || moveVector.y != 0.0f) {
                 cc.Move(moveVector * moveSpeed * Time.deltaTime);
             }

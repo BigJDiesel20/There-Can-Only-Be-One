@@ -586,14 +586,17 @@ public class TeamController
         
     }
 
-    public void OnHitConfirm((LocalPlayerManager hitBoxOwner, LocalPlayerManager hurtBoxOwner) hitInfo)
+    public void OnHitConfirm((Collider hitbox, Collider hurtbox) hitInfo)
     {
         _isHitConfirmPause = true;
-
     }
 
-    internal void OnHitPauseEnd(Vector3 forceDirection)
+    public void OnHitConfirmPauseEnd((Collider hitbox, Collider hurtbox) hitInfo)
     {
+
         _isHitConfirmPause = false;
+
+
+
     }
 }

@@ -1108,7 +1108,7 @@ namespace Rewired.Demos {
                 }
 
             } else if(entry.context.controllerMap.controllerType == ControllerType.Mouse) {
-                message = "Press any mouse button or axis to assign it to this action.\n\nTo assign mouse movement axes, move the mouse quickly in the direction you want mapped to the action. Slow movements will be ignored.";
+                message = "Press any mouse button or axis to assign it to this action.\n\nTo assign mouse movementController axes, move the mouse quickly in the direction you want mapped to the action. Slow movements will be ignored.";
             } else {
                 message = "Press any button or axis to assign it to this action.";
             }

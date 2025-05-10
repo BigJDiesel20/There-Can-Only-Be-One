@@ -37,26 +37,25 @@ public class LocalPlayerManager : MonoBehaviour
     
 
     [SerializeField]
-    public MovementController movement;
+    public MovementController movementController;
     private bool isMovementInitialize = false;
 
 
     [SerializeField]
-    public UserInterfaceController uiController;
+    public UserInterfaceController userInterfaceController;
     private bool isUIInitialized = false;
 
     [SerializeField]
     public AttackController attackController;
 
+    
 
-public UnityAction OnUpdate;
     public bool test = false;
 
-    UnityAction<(LocalPlayerManager hitBoxOwner, LocalPlayerManager hurtBoxOwner)> LocalOnHitConfirm;
-    public UnityAction<(LocalPlayerManager hitBoxOwner, LocalPlayerManager hurtBoxOwner)> RemoteOnHitConfirm;
+    
 
     public UnityAction<Vector3> OnHitPauseEnd;
-
+    public EventManager eventManager = new EventManager(); 
 
 
 
@@ -91,8 +90,8 @@ public UnityAction OnUpdate;
     {
         if (!test)
         {
-            OnUpdate();
-            //if (isMovementInitialize) movement.OnUpdate();
+            eventManager.OnUpdate?.Invoke();
+            //if (isMovementInitialize) movementController.OnUpdate();
             //if (isCameraControlerInitialized) cameraControler.OnUpdate();
             //if (isTeamInitialized) GetTarget(); team.OnUpdate();
         }
@@ -146,20 +145,20 @@ public UnityAction OnUpdate;
 
     public void LaunchMessage(string message, UnityAction confirmX, string confirmXButtonText, double messageDuration)
     {
-       uiController.SetMessage(message, confirmX, confirmXButtonText, messageDuration);
+       userInterfaceController.SetMessage(message, confirmX, confirmXButtonText, messageDuration);
     }
     public void LaunchMessage(string message, UnityAction confirmX, UnityAction reject, (string confirmX, string rejectB) buttonText, double messageDuration)
     {
-        uiController.SetMessage(message, confirmX, reject, buttonText, messageDuration);
+        userInterfaceController.SetMessage(message, confirmX, reject, buttonText, messageDuration);
     }
 
     public void LaunchMessage(string message, UnityAction confirmX, UnityAction confirmY, UnityAction reject, (string confirmX, string confirmY, string rejectB) buttonText, double messageDuration)
     {
-        uiController.SetMessage(message, confirmX, confirmY, reject, buttonText, messageDuration);
+        userInterfaceController.SetMessage(message, confirmX, confirmY, reject, buttonText, messageDuration);
     }
     public void LaunchMessage(string message, UnityAction confirmX, UnityAction confirmY, UnityAction confirmA, UnityAction reject, (string confirmX, string confirmY, string confirmA, string rejectB) buttonText, double messageDuration)
     {
-        uiController.SetMessage(message, confirmX, confirmY, confirmA, reject, buttonText, messageDuration);
+        userInterfaceController.SetMessage(message, confirmX, confirmY, confirmA, reject, buttonText, messageDuration);
     }
 
     public void InitializePlayerName(string playerName)
@@ -168,7 +167,7 @@ public UnityAction OnUpdate;
 
         if (this.displayName != null) this.displayName.text = playerName; 
         if (this.cameraControler != null) cameraControler.SetCameraName(playerName);
-        if (this.uiController != null) uiController.SetCanvasName(playerName);
+        if (this.userInterfaceController != null) userInterfaceController.SetCanvasName(playerName);
 
     }
     public void InitializePlayerCharacter(GameObject character, GameObject displayNameObject, Canvas canvas, GameObject cursor, string cameraCullingMask)
@@ -190,15 +189,15 @@ public UnityAction OnUpdate;
 
         cameraControler = new CameraControler();
         cameraControler.InitializeCameraControler(character, this.transform, playerGamePad, ref isCameraControlerInitialized, cursor, cameraCullingMask);
-        OnUpdate += cameraControler.OnUpdate;
+        eventManager.OnUpdate += cameraControler.OnUpdate;
 
 
-        movement = new MovementController();
-        movement.Initialize(this, cameraControler.GetCamera().transform, cameraControler.GetCameraLocation(), cameraControler.GetCameraState(), character, ref isMovementInitialize);
-        OnUpdate += movement.OnUpdate;
+        movementController = new MovementController();
+        movementController.Initialize(this, cameraControler.GetCamera().transform, cameraControler.GetCameraLocation(), cameraControler.GetCameraState(), character, ref isMovementInitialize);
+        eventManager.OnUpdate += movementController.OnUpdate;
         teamController = new TeamController();
         teamController.InitializeTeam(playerGamePad, this, ref cameraControler.cameraTarget, ref isTeamInitialized);
-        OnUpdate += teamController.OnUpdate;
+        eventManager.OnUpdate += teamController.OnUpdate;
         cameraControler.TrackTarget += teamController.SetTarget;
 
 
@@ -207,35 +206,29 @@ public UnityAction OnUpdate;
         displayNameObject.transform.transform.SetParent(character.transform, false);
         displayName.transform.SetLocalPositionAndRotation(new Vector3(0, 2, 0), Quaternion.identity);
 
-        uiController = new UserInterfaceController();
-        uiController.InstatiateMessageBox(cameraControler.GetCamera(), canvas, playerGamePad);
-        OnUpdate += uiController.OnUpdate;
+        userInterfaceController = new UserInterfaceController();
+        userInterfaceController.InstatiateMessageBox(cameraControler.GetCamera(), canvas, playerGamePad);
+        eventManager.OnUpdate += userInterfaceController.OnUpdate;
 
-        attackController = new AttackController();       
+        attackController = new AttackController();
 
-        LocalOnHitConfirm += movement.OnHitConfirm;
-        LocalOnHitConfirm += cameraControler.OnHitConfirm;
-        LocalOnHitConfirm += teamController.OnHitConfirm;
-        LocalOnHitConfirm += uiController.OnHitConfirm;
-        LocalOnHitConfirm += attackController.OnHitConfirm;
-
-
-
-        RemoteOnHitConfirm += movement.OnHitConfirm;
-        RemoteOnHitConfirm += cameraControler.OnHitConfirm;
-        RemoteOnHitConfirm += teamController.OnHitConfirm;
-        RemoteOnHitConfirm += uiController.OnHitConfirm;
-        RemoteOnHitConfirm += attackController.OnHitConfirm;
+        eventManager.OnHitConfirm += movementController.OnHitConfirm;
+        eventManager.OnHitConfirm += cameraControler.OnHitConfirm;
+        eventManager.OnHitConfirm += teamController.OnHitConfirm;
+        eventManager.OnHitConfirm += userInterfaceController.OnHitConfirm;
+        eventManager.OnHitConfirm += attackController.OnHitConfirm;      
 
 
-        OnHitPauseEnd += movement.OnHitPauseEnd;
-        OnHitPauseEnd += cameraControler.OnHitPauseEnd;
-        OnHitPauseEnd += teamController.OnHitPauseEnd;
-        OnHitPauseEnd += uiController.OnHitPauseEnd;
-        OnHitPauseEnd += attackController.OnHitPauseEnd;
+        eventManager.OnHitConfirmPauseEnd += movementController.OnHitConfirmPauseEnd;
+        eventManager.OnHitConfirmPauseEnd += cameraControler.OnHitConfirmPauseEnd;
+        eventManager.OnHitConfirmPauseEnd += teamController.OnHitConfirmPauseEnd;
+        eventManager.OnHitConfirmPauseEnd += userInterfaceController.OnHitConfirmPauseEnd;
+        eventManager.OnHitConfirmPauseEnd += attackController.OnHitConfirmPauseEnd;
 
-        attackController.Initialize(playerGamePad, this, character.transform, LocalOnHitConfirm, OnHitPauseEnd);
-        OnUpdate += attackController.OnUpdate;
+        eventManager.OnPush += movementController.OnPush;
+
+        attackController.Initialize(playerGamePad, this, character.transform, eventManager);
+        eventManager.OnUpdate += attackController.OnUpdate;
 
     }
     
@@ -256,14 +249,14 @@ public UnityAction OnUpdate;
     }
     public void DeactivatePlayerCharacter()
     {
-        OnUpdate -= cameraControler.OnUpdate;
-        OnUpdate -= movement.OnUpdate;
-        OnUpdate -= teamController.OnUpdate;
-        OnUpdate -= attackController.OnUpdate;
+        eventManager.OnUpdate -= cameraControler.OnUpdate;
+        eventManager.OnUpdate -= movementController.OnUpdate;
+        eventManager.OnUpdate -= teamController.OnUpdate;
+        eventManager.OnUpdate -= attackController.OnUpdate;
         cameraControler.DeactivateCameraControler(ref isCameraControlerInitialized);
         cameraControler = null;
-        movement.Deactivate();
-        movement = null;
+        movementController.Deactivate();
+        movementController = null;
         if (this.character != null)
         {
             GameObject.Destroy(this.character);

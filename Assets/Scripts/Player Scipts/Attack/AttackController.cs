@@ -44,6 +44,8 @@ public class AttackController
     [SerializeField]
     List<List<AttackType>> ComboList = new List<List<AttackType>>();
 
+    EventManager eventManager;
+
 
 
     bool IsInitialized = false;
@@ -142,44 +144,27 @@ public class AttackController
 
 
 
-    public void Initialize(Rewired.Player gamePad, LocalPlayerManager player, Transform character, UnityAction<(LocalPlayerManager hitBoxOwner, LocalPlayerManager hurtBoxOwner)> LocalOnHitConfirm,UnityAction<Vector3> OnHitPauseEnd)
+    public void Initialize(Rewired.Player gamePad, LocalPlayerManager player, Transform character, EventManager eventManager)
     {
         this.gamePad = gamePad;
         monoBehaviour = player.GetComponent<MonoBehaviour>();
 
 
-        //Collider[] hitbox = new Collider[4];
-        //GameObject hitboxPrefab = AssetDatabase.LoadAssetAtPath("Assets/Prefabs/Hit Box.prefab", typeof(GameObject)) as GameObject;
-        //(string hitBoxName, Vector3 hitBoxPosition, Vector3 hitBoxEulerAngle, Vector3 hitBoxScale)[] hitboxInfo = new (string, Vector3, Vector3, Vector3)[4]
-        //{
-        //    ("Light Attack Hit Box", new Vector3(0, .18f, .9f), new Vector3(0, 0, 0), new Vector3(.5f, .25f, 1)),
-        //    ("Heavy Attack Hit Box", new Vector3(0, .20f, 1), new Vector3(-40, 0, 0), new Vector3(.5f, .30f, 2)),
-        //    ("Special Attack Hit Box", new Vector3(0, -.19f, 1), new Vector3(0, 0, 0), new Vector3(.5f, 1.1f, 1.4f)),
-        //    ("Launcher Attack Hit Box", new Vector3(0, .30f, .95f), new Vector3(0, 0, 0), new Vector3(.5f, 2.5f, 1.11f)),
-        //};
+       
 
 
-        NoAttack.Initialize(player, character, "No Hit Box", Vector3.zero, Vector3.zero, Vector3.zero, 0, 0, AttackType.Light);
-        LightAttack.Initialize(player, character, "Light Attack Hit Box", new Vector3(0, .18f, .9f), new Vector3(0, 0, 0), new Vector3(.5f, .25f, 1), .1f, 1.2f, AttackType.Light);
-        HeaveyAttack.Initialize(player, character, "Heavy Attack Hit Box", new Vector3(0, .20f, 1), new Vector3(-40, 0, 0), new Vector3(.5f, .30f, 2), .25f, 1.2f, AttackType.Heavy);
-        SpecialAttack.Initialize(player, character, "Special Attack Hit Box", new Vector3(0, -.19f, 1), new Vector3(0, 0, 0), new Vector3(.5f, 1.1f, 1.4f), .75f, 2.25f, AttackType.Special);
-        LauncherAttack.Initialize(player, character, "Launcher Attack Hit Box", new Vector3(0, .30f, .95f), new Vector3(0, 0, 0), new Vector3(.5f, 2.5f, 1.11f), .1f, 1.2f, AttackType.Launcher);
+        NoAttack.Initialize(player, character, "No Hit Box", Vector3.zero, Vector3.zero, Vector3.zero, 0, 0,0, AttackType.Light, eventManager);
+        LightAttack.Initialize(player, character, "Light Attack Hit Box", new Vector3(0, .18f, .9f), new Vector3(0, 0, 0), new Vector3(.5f, .25f, 1), .1f, 1.2f, 1,AttackType.Light, eventManager);
+        HeaveyAttack.Initialize(player, character, "Heavy Attack Hit Box", new Vector3(0, .20f, 1), new Vector3(-40, 0, 0), new Vector3(.5f, .30f, 2), .25f, 1.2f, 2,AttackType.Heavy, eventManager);
+        SpecialAttack.Initialize(player, character, "Special Attack Hit Box", new Vector3(0, -.19f, 1), new Vector3(0, 0, 0), new Vector3(.5f, 1.1f, 1.4f), .75f, 2.25f,3 ,AttackType.Special, eventManager);
+        LauncherAttack.Initialize(player, character, "Launcher Attack Hit Box", new Vector3(0, .30f, .95f), new Vector3(0, 0, 0), new Vector3(.5f, 2.5f, 1.11f), .1f, 1.2f,5 ,AttackType.Launcher, eventManager);
 
-        LightAttack.SetOnAttackBlockComplete(() => { comboCounter = 0; });
-        HeaveyAttack.SetOnAttackBlockComplete(() => { comboCounter = 0; });
-        SpecialAttack.SetOnAttackBlockComplete(() => { comboCounter = 0; });
-        LauncherAttack.SetOnAttackBlockComplete(() => { comboCounter = 0; });
+        
 
         AttackCommand = NoAttack;
-        LightAttack.SetOnHitConfirm(LocalOnHitConfirm /*()=> Debug.Log($"LightAttack at {LightAttack.AnimationProgress} progress" )*/);
-        HeaveyAttack.SetOnHitConfirm(LocalOnHitConfirm /*() => Debug.Log($"HeaveyAttack at {HeaveyAttack.AnimationProgress} progress")*/);
-        SpecialAttack.SetOnHitConfirm(LocalOnHitConfirm /*() => Debug.Log($"SpecialAttack at {SpecialAttack.AnimationProgress} progress")*/);
-        LauncherAttack.SetOnHitConfirm(LocalOnHitConfirm /*() => Debug.Log($"LauncherAttack at {LauncherAttack.AnimationProgress} progress")*/);
+        
 
-        LightAttack.SetOnHitPauseEnd(OnHitPauseEnd /*()=> Debug.Log($"LightAttack at {LightAttack.AnimationProgress} progress" )*/);
-        HeaveyAttack.SetOnHitPauseEnd(OnHitPauseEnd /*() => Debug.Log($"HeaveyAttack at {HeaveyAttack.AnimationProgress} progress")*/);
-        SpecialAttack.SetOnHitPauseEnd(OnHitPauseEnd /*() => Debug.Log($"SpecialAttack at {SpecialAttack.AnimationProgress} progress")*/);
-        LauncherAttack.SetOnHitPauseEnd(OnHitPauseEnd /*() => Debug.Log($"LauncherAttack at {LauncherAttack.AnimationProgress} progress")*/);
+       
 
         List<AttackType> breadAndButter = new List<AttackType>() { AttackType.Light, AttackType.Light, AttackType.Light, AttackType.Light };
         List<AttackType> combo1 = new List<AttackType>() { AttackType.Light, AttackType.Light, AttackType.Heavy, AttackType.Heavy };
@@ -199,7 +184,7 @@ public class AttackController
         ComboList.Add(combo4);
 
 
-
+        this.eventManager = eventManager;
 
         IsInitialized = true;
 
@@ -234,7 +219,7 @@ public class AttackController
                     if (j + 1 == NewChain.Count && CountConfirm == NewChain.Count)
                     {
                         doesComboMatch = true;
-                        Debug.Log($"ComboMatch: {doesComboMatch} index: {i}");
+                        //Debug.Log($"ComboMatch: {doesComboMatch} index: {i}");
                     }
                 }
             }
@@ -244,14 +229,13 @@ public class AttackController
         return doesComboMatch;
 
     }
-    public void OnHitConfirm((LocalPlayerManager hitBoxOwner, LocalPlayerManager hurtBoxOwner) hitInfo)
+    public void OnHitConfirm((Collider hitbox, Collider hurtbox) hitInfo)
     {
         _isHitConfirmPause = true;
-
-
     }
-    internal void OnHitPauseEnd(Vector3 forceDirection)
+    public void OnHitConfirmPauseEnd((Collider hitbox, Collider hurtbox) hitInfo)
     {
+
         _isHitConfirmPause = false;
     }
 }

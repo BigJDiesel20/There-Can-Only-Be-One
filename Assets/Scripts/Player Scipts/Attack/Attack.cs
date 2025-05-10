@@ -31,7 +31,7 @@ public class Attack : IAttackCommand
     double _coolDownLength;
     [SerializeField]
     double _coolDownProgress = 0;
-    Collider hitbox;
+    Collider hitBox;
     [SerializeField] Collider hurtBox;
     [SerializeField] bool isHitConfirm = false;
     Material hitboxMaterial;
@@ -39,11 +39,10 @@ public class Attack : IAttackCommand
     bool isAttackAnimationActive = false;
     float startAlbedo;
     Action onAttack;
-    UnityAction<(LocalPlayerManager hitBoxOwner, LocalPlayerManager hurtBoxOwner)> OnHitConfirm;
-    UnityAction<Vector3> OnHitPauseEnd;
+   
+    //UnityAction<Vector3> OnHitPauseEnd;
     Action onMiss;
-    Action OnAnimationComplete;
-    Action OnCoolDownComplete;
+    
     [SerializeField]
     bool isCoolDownActive = false;
     [SerializeField] bool _isHitConfirmPause = false;
@@ -51,6 +50,8 @@ public class Attack : IAttackCommand
     [SerializeField] double hitStunLength = .2f;
     Color tempColor;
     [SerializeField] float pushBack = 1;
+
+    EventManager eventManager;
     
     
 
@@ -67,15 +68,15 @@ public class Attack : IAttackCommand
     {
         get
         {
-            return hitbox;
+            return hitBox;
         }
         set
         {
-            hitbox = value;
-            hitboxMaterial = hitbox.GetComponent<Renderer>().material;
+            hitBox = value;
+            hitboxMaterial = hitBox.GetComponent<Renderer>().material;
             startAlbedo = hitboxMaterial.color.a;
             hitboxMaterial.color = new Color(hitboxMaterial.color.r, hitboxMaterial.color.g, hitboxMaterial.color.b, 0);
-            hitbox.isTrigger = true;
+            hitBox.isTrigger = true;
         }
     }
 
@@ -96,11 +97,22 @@ public class Attack : IAttackCommand
             {
                 hitboxMaterial.color = tempColor;
                 hitStunTimer = 0;
-                _isHitConfirmPause = false;
-                Vector3 direction = hurtBox.transform.position - hitbox.transform.position;
-                direction.Normalize();
-                OnHitPauseEnd?.Invoke(direction*pushBack);
+                _isHitConfirmPause = false;                
                 
+                //OnHitPauseEnd?.Invoke();
+                eventManager.OnHitConfirmPauseEnd?.Invoke((hitBox,hurtBox));
+                switch(_type)
+                {     
+                    case AttackController.AttackType.Launcher:
+
+                        eventManager.OnPush?.Invoke(Vector3.up * pushBack);
+                        break;
+                    default:
+                        Vector3 direction = hurtBox.transform.position - hitBox.transform.position;
+                        direction.Normalize();
+                        eventManager.OnPush?.Invoke(direction * pushBack);
+                        break;
+                }                
             }
 
         }
@@ -139,7 +151,7 @@ public class Attack : IAttackCommand
     {
         if (_coolDownProgress >= 1)
         {
-            OnCoolDownComplete?.Invoke();
+            eventManager.OnCoolDownComplete?.Invoke();
             isCoolDownActive = false;
         }
     }
@@ -150,7 +162,7 @@ public class Attack : IAttackCommand
     {
         if (_animationProgress >= 1)
         {
-            OnAnimationComplete?.Invoke();
+            eventManager.OnAnimationComplete?.Invoke();
             hitboxMaterial.color = new Color(hitboxMaterial.color.r, hitboxMaterial.color.g, hitboxMaterial.color.b, 0);
             //Debug.Log(isAttackAnimationActive);
             isAttackAnimationActive = false;
@@ -170,7 +182,7 @@ public class Attack : IAttackCommand
             tempColor = hitboxMaterial.color;
             Debug.Log($"Hit {hurtBox.name}");
             _isHitConfirmPause = isHitConfirm = true;
-            OnHitConfirm?.Invoke((player,hurtBox.GetComponent<LocalPlayerManager>()));
+            eventManager.OnHitConfirm?.Invoke((hitBox,hurtBox));
             
         }
 
@@ -233,8 +245,9 @@ public class Attack : IAttackCommand
         if (other.CompareTag("Player"))
         {
             LocalPlayerManager otherPlayer = other.GetComponent<HitDetectionManager>().player;
-            OnHitConfirm += otherPlayer.RemoteOnHitConfirm;
-            OnHitPauseEnd += otherPlayer.OnHitPauseEnd;
+            eventManager.OnHitConfirm += otherPlayer.eventManager.OnHitConfirm;
+            eventManager.OnHitConfirmPauseEnd += otherPlayer.eventManager.OnHitConfirmPauseEnd;
+            eventManager.OnPush = otherPlayer.eventManager.OnPush;
             hurtBox = other;
 
         }
@@ -245,14 +258,16 @@ public class Attack : IAttackCommand
         if (other.CompareTag("Player"))
         {
             LocalPlayerManager otherPlayer = other.GetComponent<HitDetectionManager>().player;
-            OnHitConfirm -= otherPlayer.RemoteOnHitConfirm;
-            if (IsHitConfirmPause == true) 
+            eventManager.OnHitConfirm -= otherPlayer.eventManager.OnHitConfirm;
+            if (_isHitConfirmPause == true) 
             {
-                Vector3 direction = hurtBox.transform.position - hitbox.transform.position;
+                Vector3 direction = hurtBox.transform.position - hitBox.transform.position;
                 direction.Normalize();
-                OnHitPauseEnd?.Invoke(direction * pushBack); 
+                eventManager.OnHitConfirmPauseEnd?.Invoke((hitBox, hurtBox));
+                
+                eventManager.OnPush?.Invoke(direction * pushBack);
             }
-            OnHitPauseEnd -= otherPlayer.OnHitPauseEnd;
+            eventManager.OnHitConfirmPauseEnd -= otherPlayer.eventManager.OnHitConfirmPauseEnd;
 
 
             if (hurtBox == other)
@@ -286,24 +301,11 @@ public class Attack : IAttackCommand
     {
         ComboList = combos;
     }
-    public void SetOnAnimationComplete(Action action)
-    {
-        OnAnimationComplete += action;
-    }
-    public void SetOnAttackBlockComplete(Action action)
-    {
-        OnCoolDownComplete += action;
-    }
+    
 
-    public void SetOnHitConfirm(UnityAction<(LocalPlayerManager hitBoxOwner, LocalPlayerManager hurtBoxOwner)> UnityAction)
-    {
-        OnHitConfirm += UnityAction;
-    }
+    
 
-    public void SetOnHitPauseEnd(UnityAction<Vector3> OnHitPauseEnd)
-    {
-        OnHitPauseEnd += OnHitPauseEnd; 
-    }
+    
 
     /// <summary>
     /// Set a Action to be exicuted after a specified percentage of the animation is played.
@@ -325,35 +327,37 @@ public class Attack : IAttackCommand
         double progress = Clamp(time, 0, _animationLength) / _animationLength;
         onAnimation.Add((progress, action));
     }
-    public void Initialize(LocalPlayerManager player,Transform character, string hitBoxName, Vector3 hitBoxPosition, Vector3 hitBoxEulerAngle, Vector3 hitBoxScale, double animationLength, double attackBlockLength, AttackType Type)
+    public void Initialize(LocalPlayerManager player,Transform character, string hitBoxName, Vector3 hitBoxPosition, Vector3 hitBoxEulerAngle, Vector3 hitBoxScale, double animationLength, double attackBlockLength,float pushBack, AttackType Type,EventManager eventManager)
     {
         this.player = player;
         GameObject hitboxPrefab = AssetDatabase.LoadAssetAtPath("Assets/Prefabs/Hit Box.prefab", typeof(GameObject)) as GameObject;
-        hitbox = GameObject.Instantiate(hitboxPrefab).GetComponent<BoxCollider>();
-        hitbox.isTrigger = true;
-        hitbox.transform.SetParent(character);
-        hitbox.gameObject.name = hitBoxName;
-        hitbox.transform.localPosition = hitBoxPosition;
-        hitbox.transform.localEulerAngles = hitBoxEulerAngle;
-        hitbox.transform.localScale = hitBoxScale;
-        TriggerDetectionManager triggerDetection = hitbox.gameObject.AddComponent<TriggerDetectionManager>() as TriggerDetectionManager;
+        hitBox = GameObject.Instantiate(hitboxPrefab).GetComponent<BoxCollider>();
+        hitBox.isTrigger = true;
+        hitBox.transform.SetParent(character);
+        hitBox.gameObject.name = hitBoxName;
+        hitBox.transform.localPosition = hitBoxPosition;
+        hitBox.transform.localEulerAngles = hitBoxEulerAngle;
+        hitBox.transform.localScale = hitBoxScale;
+        TriggerDetectionManager triggerDetection = hitBox.gameObject.AddComponent<TriggerDetectionManager>() as TriggerDetectionManager;
         triggerDetection.BroadCastOnTriggerEnter += OnTriggerEnter;
         triggerDetection.BroadCastOnTriggerExit += OnTriggerExit;        
         _animationLength = animationLength;
         _coolDownLength = attackBlockLength;
 
         _type = Type;
+        this.pushBack = pushBack;
 
-
-        hitboxMaterial = hitbox.GetComponent<Renderer>().material;
+        hitboxMaterial = hitBox.GetComponent<Renderer>().material;
         startAlbedo = hitboxMaterial.color.a;
         hitboxMaterial.color = new Color(hitboxMaterial.color.r, hitboxMaterial.color.g, hitboxMaterial.color.b, 0);
-        hitbox.isTrigger = true;
+        hitBox.isTrigger = true;
 
         //if (hitBoxScale == Vector3.zero)
         //{
-        //    hitbox.gameObject.SetActive(false);
+        //    hitBox.gameObject.SetActive(false);
         //}
+
+        this.eventManager = eventManager;
 
 
     }

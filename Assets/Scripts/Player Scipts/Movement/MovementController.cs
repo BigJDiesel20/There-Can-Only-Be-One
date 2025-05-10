@@ -21,6 +21,9 @@ public class MovementController
 
     [SerializeField]
     Vector3 forceDirection = Vector3.zero;
+    bool isPushed = false;
+    (bool x, bool y, bool z) zeroed = ( true, true,true );
+
 
     public RaycastHit hit;
     public Vector3 offset = new Vector3(0, -0.9f, 0);
@@ -44,20 +47,19 @@ public class MovementController
     {
         GroundDetection();
 
-
-        switch (cameraStateWrapper.CurrentState)
-        {
-            case CameraStateWrapper.CameraState.Orbit:
-                Orbit();
-                //Debug.Log($"{"Movement"} Orbit");
-                break;
-            case CameraStateWrapper.CameraState.Follow:
-                Follow();
-                //Debug.Log($"{"Movement"} Follow");
-                break;
-        }
-
-
+        
+            switch (cameraStateWrapper.CurrentState)
+            {
+                case CameraStateWrapper.CameraState.Orbit:
+                    Orbit();
+                    //Debug.Log($"{"Movement"} Orbit");
+                    break;
+                case CameraStateWrapper.CameraState.Follow:
+                    Follow();
+                    //Debug.Log($"{"Movement"} Follow");
+                    break;
+            }
+        
 
     }
 
@@ -71,14 +73,20 @@ public class MovementController
         // tan(o)* z = y
         // tan()/ y =
 
+
         relativeDirection.x += forceDirection.x;
-        relativeDirection.y += forceDirection.y;
-        if (forceDirection.x > 0) { forceDirection.x -= forceDirection.x * Time.deltaTime; forceDirection.x = (forceDirection.x <= 0) ? 0 : forceDirection.x;}
-        if (forceDirection.y > 0) { forceDirection.y -= forceDirection.y * Time.deltaTime; forceDirection.y = (forceDirection.y <= 0) ? 0 : forceDirection.y; }
+        relativeDirection.z += forceDirection.z;
+        if (forceDirection.x > 0) {forceDirection.x -= forceDirection.x * Time.deltaTime; if (forceDirection.x < 0) {forceDirection.x = 0; zeroed.x = true; }}
+        if (forceDirection.z > 0) {forceDirection.z -= forceDirection.z * Time.deltaTime; if (forceDirection.z < 0) { forceDirection.z = 0; zeroed.z = true; }}
+
+        if (zeroed.x == true & zeroed.y == true & zeroed.z == true) isPushed = false;
+
+        //if (forceDirection.x > 0) { forceDirection.x -= forceDirection.x * Time.deltaTime; forceDirection.x = (forceDirection.x <= 0) ? 0 : forceDirection.x; }
+        //if (forceDirection.y > 0) { forceDirection.z -= forceDirection.z * Time.deltaTime; forceDirection.z = (forceDirection.y <= 0) ? 0 : forceDirection.z; }
 
 
-        rb.linearVelocity = (!_isHitConfirmPause)?relativeDirection + Jump(): Vector3.zero;
-        if (relativeDirection != Vector3.zero)
+        rb.linearVelocity = (!_isHitConfirmPause) ? relativeDirection + Jump() : Vector3.zero;
+        if (relativeDirection != Vector3.zero & isPushed == false)
         {
             rb.transform.eulerAngles = new Vector3(0, Mathf.Atan2(relativeDirection.x/*gamePad.GetAxis("Move Horizontal")*/, relativeDirection.z/*gamePad.GetAxis("Move Vertical")*/) * Mathf.Rad2Deg, 0);
         }
@@ -180,8 +188,25 @@ public class MovementController
                 {
                     jumpState = JumpState.Falling;
                 }
+
+                if (isGrounded & forceDirection.y > 0)
+                {
+                    yVelocity = forceDirection.y;                    
+                    jumpState = JumpState.Launched;
+                }
                 break;
             case JumpState.Jumping:
+                forceDirection.y = yVelocity -= gravity * Time.deltaTime;
+                if (yVelocity < 0)
+                {
+                    forceDirection.y = 0;
+                    zeroed.y = true;
+                    jumpState = JumpState.Falling;
+                }
+                break;
+
+            case JumpState.Launched:
+                forceDirection.y -= forceDirection.y;
                 yVelocity -= gravity * Time.deltaTime;
                 if (yVelocity < 0)
                 {
@@ -197,6 +222,8 @@ public class MovementController
                 }
                 if (isGrounded)
                 {
+                    forceDirection.y = 0;
+                    zeroed.y = true;
                     yVelocity = 0f;
                     charge = .5f;
                     jumpState = JumpState.Grounded;
@@ -225,18 +252,51 @@ public class MovementController
         }
     }
 
-    public void OnHitConfirm((LocalPlayerManager hitBoxOwner, LocalPlayerManager hurtBoxOwner) hitInfo)
+    public void OnHitConfirm((Collider hitbox, Collider hurtbox) hitInfo)
     {
         _isHitConfirmPause = true;
 
 
+        //bool isAttacked = character.gameObject.GetInstanceID() == hitInfo.hurtbox.gameObject.GetInstanceID();
+        //bool isAttacking = character.gameObject.GetInstanceID() == hitInfo.hitBox.transform.parent.gameObject.GetInstanceID();
+
+        //if (isAttacking)
+        //{
+        //    Debug.Log($"{rb.transform.parent.name} hit {hitInfo.hurtbox.transform.parent.name}");
+        //}
+        //else
+        //{
+        //    Debug.Log($"{rb.transform.parent.name} has been hit by {hitInfo.hitBox.transform.parent.parent.name}");
+        //}
+
+
     }
 
-    internal void OnHitPauseEnd(Vector3 forceDirection)
+    public void OnHitConfirmPauseEnd((Collider hitbox, Collider hurtbox) hitInfo)
     {
+        //Debug.Log($"_isHitConfirmPause Before: {_isHitConfirmPause}");
         _isHitConfirmPause = false;
-        this.forceDirection = forceDirection;
+        //Debug.Log($"_isHitConfirmPause After: {_isHitConfirmPause}");
+        bool isAttacking = character.gameObject.GetInstanceID() == hitInfo.hitbox.transform.parent.gameObject.GetInstanceID();
 
+        if (isAttacking)
+        {
+            //Debug.Log($"{rb.transform.parent.name} hit {hitInfo.hurtbox.transform.parent.name}");
+
+        }
 
     }
+
+    public void OnPush(Vector3 direction)
+    {
+        forceDirection = character.transform.InverseTransformVector(direction);
+        Debug.Log($"direction: {direction}");
+        Debug.Log($"forceDirection: {forceDirection}");
+        isPushed = true;
+        if (forceDirection.x > 0) zeroed.x = false;
+        if (forceDirection.y > 0) zeroed.y = false;
+        if (forceDirection.z > 0) zeroed.z = false;
+    }
+
+    
 }

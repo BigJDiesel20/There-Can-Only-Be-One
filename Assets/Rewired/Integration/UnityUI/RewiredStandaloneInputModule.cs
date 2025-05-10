@@ -126,17 +126,17 @@ namespace Rewired.Integration.UnityUI {
         private bool setActionsById = false;
 
         /// <summary>
-        /// Name of the horizontal axis for movement (if axis events are used).
+        /// Name of the horizontal axis for movementController (if axis events are used).
         /// </summary>
         [SerializeField]
-        [Tooltip("Id of the horizontal Action for movement (if axis events are used).")]
+        [Tooltip("Id of the horizontal Action for movementController (if axis events are used).")]
         private int horizontalActionId = -1;
 
         /// <summary>
-        /// Name of the vertical axis for movement (if axis events are used).
+        /// Name of the vertical axis for movementController (if axis events are used).
         /// </summary>
         [SerializeField]
-        [Tooltip("Id of the vertical Action for movement (if axis events are used).")]
+        [Tooltip("Id of the vertical Action for movementController (if axis events are used).")]
         private int verticalActionId = -1;
 
         /// <summary>
@@ -158,17 +158,17 @@ namespace Rewired.Integration.UnityUI {
         #region StandaloneInputModule Inspector Variables
 
         /// <summary>
-        /// Name of the horizontal axis for movement (if axis events are used).
+        /// Name of the horizontal axis for movementController (if axis events are used).
         /// </summary>
         [SerializeField]
-        [Tooltip("Name of the horizontal axis for movement (if axis events are used).")]
+        [Tooltip("Name of the horizontal axis for movementController (if axis events are used).")]
         private string m_HorizontalAxis = DEFAULT_ACTION_MOVE_HORIZONTAL;
 
         /// <summary>
-        /// Name of the vertical axis for movement (if axis events are used).
+        /// Name of the vertical axis for movementController (if axis events are used).
         /// </summary>
         [SerializeField]
-        [Tooltip("Name of the vertical axis for movement (if axis events are used).")]
+        [Tooltip("Name of the vertical axis for movementController (if axis events are used).")]
         private string m_VerticalAxis = DEFAULT_ACTION_MOVE_VERTICAL;
 
         /// <summary>
@@ -186,17 +186,17 @@ namespace Rewired.Integration.UnityUI {
         private string m_CancelButton = DEFAULT_ACTION_CANCEL;
 
         /// <summary>
-        /// Number of selection changes allowed per second when a movement button/axis is held in a direction.
+        /// Number of selection changes allowed per second when a movementController button/axis is held in a direction.
         /// </summary>
         [SerializeField]
-        [Tooltip("Number of selection changes allowed per second when a movement button/axis is held in a direction.")]
+        [Tooltip("Number of selection changes allowed per second when a movementController button/axis is held in a direction.")]
         private float m_InputActionsPerSecond = 10;
 
         /// <summary>
-        /// Delay in seconds before vertical/horizontal movement starts repeating continouously when a movement direction is held.
+        /// Delay in seconds before vertical/horizontal movementController starts repeating continouously when a movementController direction is held.
         /// </summary>
         [SerializeField]
-        [Tooltip("Delay in seconds before vertical/horizontal movement starts repeating continouously when a movement direction is held.")]
+        [Tooltip("Delay in seconds before vertical/horizontal movementController starts repeating continouously when a movementController direction is held.")]
         private float m_RepeatDelay = 0.0f;
 
         /// <summary>
@@ -393,7 +393,7 @@ namespace Rewired.Integration.UnityUI {
         }
 
         /// <summary>
-        /// Name of the horizontal axis for movement (if axis events are used).
+        /// Name of the horizontal axis for movementController (if axis events are used).
         /// </summary>
         public int HorizontalActionId {
             get {
@@ -409,7 +409,7 @@ namespace Rewired.Integration.UnityUI {
         }
 
         /// <summary>
-        /// Name of the vertical axis for movement (if axis events are used).
+        /// Name of the vertical axis for movementController (if axis events are used).
         /// </summary>
         public int VerticalActionId {
             get {
@@ -500,7 +500,7 @@ namespace Rewired.Integration.UnityUI {
         }
 
         // <summary>
-        /// Number of selection changes allowed per second when a movement button/axis is held in a direction.
+        /// Number of selection changes allowed per second when a movementController button/axis is held in a direction.
         /// </summary>
         public float inputActionsPerSecond {
             get { return m_InputActionsPerSecond; }
@@ -508,7 +508,7 @@ namespace Rewired.Integration.UnityUI {
         }
 
         /// <summary>
-        /// Delay in seconds before vertical/horizontal movement starts repeating continouously when a movement direction is held.
+        /// Delay in seconds before vertical/horizontal movementController starts repeating continouously when a movementController direction is held.
         /// </summary>
         public float repeatDelay {
             get { return m_RepeatDelay; }
@@ -516,7 +516,7 @@ namespace Rewired.Integration.UnityUI {
         }
 
         /// <summary>
-        /// Name of the horizontal axis for movement (if axis events are used).
+        /// Name of the horizontal axis for movementController (if axis events are used).
         /// </summary>
         public string horizontalAxis {
             get { return m_HorizontalAxis; }
@@ -530,7 +530,7 @@ namespace Rewired.Integration.UnityUI {
         }
 
         /// <summary>
-        /// Name of the vertical axis for movement (if axis events are used).
+        /// Name of the vertical axis for movementController (if axis events are used).
         /// </summary>
         public string verticalAxis {
             get { return m_VerticalAxis; }
@@ -871,18 +871,18 @@ namespace Rewired.Integration.UnityUI {
         /// Process keyboard events.
         /// </summary>
         private bool SendMoveEventToSelectedObject() {
-            if (recompiling) return false; // never allow movement while recompiling
+            if (recompiling) return false; // never allow movementController while recompiling
 
             double time = Rewired.ReInput.time.unscaledTime; // get the current time
 
-            // Check for zero movement and clear
+            // Check for zero movementController and clear
             Vector2 movement = GetRawMoveVector();
             if (Mathf.Approximately(movement.x, 0f) && Mathf.Approximately(movement.y, 0f)) {
                 m_ConsecutiveMoveCount = 0;
                 return false;
             }
 
-            // Check if movement is in the same direction as previously
+            // Check if movementController is in the same direction as previously
             bool similarDir = (Vector2.Dot(movement, m_LastMoveVector) > 0);
 
             // Check if a button/key/axis was just pressed this frame
@@ -891,7 +891,7 @@ namespace Rewired.Integration.UnityUI {
 
             AxisEventData axisEventData = null;
 
-            // If user just pressed button/key/axis, always allow movement
+            // If user just pressed button/key/axis, always allow movementController
             bool allow = buttonDownHorizontal || buttonDownVertical;
             if (allow) { // we had a button down event
 
@@ -911,7 +911,7 @@ namespace Rewired.Integration.UnityUI {
                 if (m_RepeatDelay > 0.0f) { // apply repeat delay
                     // Otherwise, user held down key or axis.
                     // If direction didn't change at least 90 degrees, wait for delay before allowing consecutive event.
-                    if (similarDir && m_ConsecutiveMoveCount == 1) { // this is the 2nd tick after the initial that activated the movement in this direction
+                    if (similarDir && m_ConsecutiveMoveCount == 1) { // this is the 2nd tick after the initial that activated the movementController in this direction
                         allow = (time > m_PrevActionTime + m_RepeatDelay);
                         // If direction changed at least 90 degree, or we already had the delay, repeat at repeat rate.
                     } else {
@@ -921,7 +921,7 @@ namespace Rewired.Integration.UnityUI {
                     allow = (time > m_PrevActionTime + 1f / m_InputActionsPerSecond); // apply input actions per second limit
                 }
             }
-            if (!allow) return false; // movement not allowed, done
+            if (!allow) return false; // movementController not allowed, done
 
             // Get the axis move event
             if (axisEventData == null) {
