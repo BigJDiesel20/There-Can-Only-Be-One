@@ -112,16 +112,24 @@ public void OnHitConfirm((Collider hitbox, Collider hurtbox) arg0)
 
     public void Deactivate()
     {
+        this.Health.Deactivate();
         this.Health = null;
+        this.HealthRegeneration.Deactivate();
         this.HealthRegeneration = null;
+        this.Stamina.Deactivate();
         this.Stamina = null;
+        this.StaminaRevovery.Deactivate();
         this.StaminaRevovery = null;
+        this.Aura.Deactivate();
         this.Aura = null;
+        this.Armor.Deactivate();
         this.Armor = null;
+        this.ToughHide.Deactivate();
         this.ToughHide = null;
         this.playerEvents.OnUpdate -= OnUpdate;
         this.playerEvents.OnHitConfirm -= OnHitConfirm;
         this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
+        this.playerEvents = null;
         _isInitialized = false;
     }
 

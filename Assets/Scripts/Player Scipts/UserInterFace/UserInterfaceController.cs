@@ -151,10 +151,11 @@ public class UserInterfaceController
     }
     public void Deactivate()
     {
-        this.playerEvents = null;
+        
         this.playerEvents.OnUpdate -= OnUpdate;
         this.playerEvents.OnHitConfirm -= OnHitConfirm;
         this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
+        this.playerEvents = null;
         GameObject.Destroy(canvas.gameObject);
          canvas = null;
         MessageBox = null;       

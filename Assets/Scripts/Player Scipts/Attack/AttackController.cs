@@ -218,11 +218,11 @@ public class AttackController
         SpecialAttack = null;
         LauncherAttack.Deactivate();
         LauncherAttack = null;
-        ComboList.Clear();
-        this.playerEvents = null;
+        ComboList.Clear();        
         this.playerEvents.OnUpdate -= OnUpdate;
         this.playerEvents.OnHitConfirm -= OnHitConfirm;
         this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
+        this.playerEvents = null;
         isInitialized = false;
     }
 

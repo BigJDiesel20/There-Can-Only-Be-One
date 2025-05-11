@@ -8,6 +8,7 @@ using static UnityEngine.GraphicsBuffer;
 using UnityEngine.UI;
 using System.Text;
 using UnityEngine.TextCore.Text;
+using UnityEditor;
 
 [Serializable]
 public class CameraControler
@@ -128,6 +129,7 @@ public class CameraControler
         CameraObject.transform.SetParent(parent);
         this.cameraObject = CameraObject;
         this.camera = CameraObject.AddComponent<Camera>();
+        
         this.cursor = cursor;
 
         this.cameraAnchor = cameraAnchor;
@@ -162,13 +164,21 @@ public class CameraControler
     public void Deactivate()
     {
         camera = null;
+
+        
+        this.playerEvents.OnUpdate -= OnUpdate;
+        this.playerEvents.OnHitConfirm -= OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
+        this.playerEvents = null;        
+        
+        if (cursor != null)
+        {
+            GameObject.Destroy(cursor);
+        }
         if (cameraObject != null)
         {
             GameObject.Destroy(cameraObject);
         }
-        this.playerEvents.OnUpdate -= OnUpdate;
-        this.playerEvents.OnHitConfirm -= OnHitConfirm;
-        this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
         isInitialized = false;
     }
 

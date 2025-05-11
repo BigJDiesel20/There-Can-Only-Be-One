@@ -154,6 +154,7 @@ private PlayerEvents playerEvents;
         this.playerEvents.OnHitConfirm -= OnHitConfirm;
         this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
         this.playerEvents.OnPush -= OnPush;
+        this.playerEvents = null;
         //GameObject.Destroy(correctedTransform.gameObject);
         //correctedTransform = null;
 

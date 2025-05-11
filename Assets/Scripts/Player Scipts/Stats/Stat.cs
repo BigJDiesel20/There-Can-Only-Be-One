@@ -39,7 +39,7 @@ public class Stat
         _isInitialized = true;
     }
 
-    public void DDeactivate()
+    public void Deactivate()
     {
         this._value = 0;
         this._min = 0;

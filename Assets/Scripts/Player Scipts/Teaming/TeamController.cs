@@ -581,6 +581,7 @@ public class TeamController
         this.playerEvents.TrackTarget -= SetTarget;
         this.playerEvents.OnHitConfirm -= OnHitConfirm;
         this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
+        this.playerEvents = null;
         isInitialized = false;
     }
 

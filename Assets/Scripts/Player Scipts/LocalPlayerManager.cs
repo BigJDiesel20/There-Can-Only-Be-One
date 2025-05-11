@@ -235,12 +235,10 @@ public class LocalPlayerManager : MonoBehaviour
     {    
         cameraControler.Deactivate();
         cameraControler = null;
+
         movementController.Deactivate();
         movementController = null;
-        if (this.character != null)
-        {
-            GameObject.Destroy(this.character);
-        }
+        
         teamController.Deactivate();
         teamController = null;
 
@@ -253,6 +251,10 @@ public class LocalPlayerManager : MonoBehaviour
         statManager.Deactivate();
         statManager = null;
 
+        if (this.character != null)
+        {
+            GameObject.Destroy(this.character);
+        }
     }
 
 
