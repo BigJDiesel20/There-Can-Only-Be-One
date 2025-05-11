@@ -32,6 +32,7 @@ public class UserInterfaceController
     public MessageType CurrentMessage { get { return _currentMessage; } set { _currentMessage = value; OnMessageChange(_currentMessage); } }
     List<Action> NextMessage = new List<Action>();
     private bool _isHitConfirmPause;
+    private PlayerEvents playerEvents;
 
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
@@ -58,7 +59,7 @@ public class UserInterfaceController
         
     }
 
-    public void InstatiateMessageBox(Camera camera, Canvas canvas, Rewired.Player gamePad)
+    public void Initialize(Camera camera, Canvas canvas, Rewired.Player gamePad, PlayerEvents playerEvents)
     {
         this.gamePad = gamePad;
         this.canvas = canvas;
@@ -141,9 +142,26 @@ public class UserInterfaceController
 
         buttons[1].onClick.AddListener(Clear);
         canvas.gameObject.SetActive(false);
-        
-    }
 
+        this.playerEvents = playerEvents;
+        this.playerEvents.OnUpdate += OnUpdate;
+        this.playerEvents.OnHitConfirm += OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd += OnHitConfirmPauseEnd;
+
+    }
+    public void Deactivate()
+    {
+        this.playerEvents = null;
+        this.playerEvents.OnUpdate -= OnUpdate;
+        this.playerEvents.OnHitConfirm -= OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
+        GameObject.Destroy(canvas.gameObject);
+         canvas = null;
+        MessageBox = null;       
+        buttons = null;
+        message = null;
+
+    }
     public void SetCanvasName(string playerName)
     {
         if (canvas != null)
@@ -538,6 +556,8 @@ public class UserInterfaceController
 
 
     }
+
+    
 }
 
                 

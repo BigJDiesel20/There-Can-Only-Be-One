@@ -44,12 +44,14 @@ public class AttackController
     [SerializeField]
     List<List<AttackType>> ComboList = new List<List<AttackType>>();
 
-    EventManager eventManager;
+    PlayerEvents playerEvents;
 
 
 
-    bool IsInitialized = false;
+    bool isInitialized = false;
     private bool _isHitConfirmPause;
+
+    public bool IsInitialized { get => isInitialized;}
 
     public void OnUpdate()
     {
@@ -59,7 +61,7 @@ public class AttackController
         //    _isHitConfirmPause = true;
         //}
 
-        if (IsInitialized)
+        if (isInitialized)
         {
             if (!AttackCommand.IsHitConfirmPause)
             {
@@ -88,6 +90,7 @@ public class AttackController
     {
         if (IsComboable(NextAttack.Type)/*AttackCommand.IsComboAble(comboCounter, NextAttack.Type)*/)
         {
+            
             if (AttackCommand.AnimationProgress >= 1)
             {
                 comboCounter++;
@@ -98,6 +101,7 @@ public class AttackController
         }
         else
         {
+           
             if (AttackCommand.CoolDownProgress >= 1)
             {
 
@@ -144,7 +148,7 @@ public class AttackController
 
 
 
-    public void Initialize(Rewired.Player gamePad, LocalPlayerManager player, Transform character, EventManager eventManager)
+    public void Initialize(Rewired.Player gamePad, LocalPlayerManager player, Transform character, PlayerEvents playerEvents)
     {
         this.gamePad = gamePad;
         monoBehaviour = player.GetComponent<MonoBehaviour>();
@@ -153,11 +157,11 @@ public class AttackController
        
 
 
-        NoAttack.Initialize(player, character, "No Hit Box", Vector3.zero, Vector3.zero, Vector3.zero, 0, 0,0, AttackType.Light, eventManager);
-        LightAttack.Initialize(player, character, "Light Attack Hit Box", new Vector3(0, .18f, .9f), new Vector3(0, 0, 0), new Vector3(.5f, .25f, 1), .1f, 1.2f, 1,AttackType.Light, eventManager);
-        HeaveyAttack.Initialize(player, character, "Heavy Attack Hit Box", new Vector3(0, .20f, 1), new Vector3(-40, 0, 0), new Vector3(.5f, .30f, 2), .25f, 1.2f, 2,AttackType.Heavy, eventManager);
-        SpecialAttack.Initialize(player, character, "Special Attack Hit Box", new Vector3(0, -.19f, 1), new Vector3(0, 0, 0), new Vector3(.5f, 1.1f, 1.4f), .75f, 2.25f,3 ,AttackType.Special, eventManager);
-        LauncherAttack.Initialize(player, character, "Launcher Attack Hit Box", new Vector3(0, .30f, .95f), new Vector3(0, 0, 0), new Vector3(.5f, 2.5f, 1.11f), .1f, 1.2f,5 ,AttackType.Launcher, eventManager);
+        NoAttack.Initialize(player, character, "No Hit Box", Vector3.zero, Vector3.zero, Vector3.zero, 0, 0,0, AttackType.Light, playerEvents);
+        LightAttack.Initialize(player, character, "Light Attack Hit Box", new Vector3(0, .18f, .9f), new Vector3(0, 0, 0), new Vector3(.5f, .25f, 1), .1f, 1.2f, 1,AttackType.Light, playerEvents);
+        HeaveyAttack.Initialize(player, character, "Heavy Attack Hit Box", new Vector3(0, .20f, 1), new Vector3(-40, 0, 0), new Vector3(.5f, .30f, 2), .25f, 1.2f, 2,AttackType.Heavy, playerEvents);
+        SpecialAttack.Initialize(player, character, "Special Attack Hit Box", new Vector3(0, -.19f, 1), new Vector3(0, 0, 0), new Vector3(.5f, 1.1f, 1.4f), .75f, 2.25f,3 ,AttackType.Special, playerEvents);
+        LauncherAttack.Initialize(player, character, "Launcher Attack Hit Box", new Vector3(0, .30f, .95f), new Vector3(0, 0, 0), new Vector3(.5f, 2.5f, 1.11f), .1f, 1.2f,5 ,AttackType.Launcher, playerEvents);
 
         
 
@@ -184,9 +188,13 @@ public class AttackController
         ComboList.Add(combo4);
 
 
-        this.eventManager = eventManager;
+        this.playerEvents = playerEvents;
+        this.playerEvents.OnUpdate += OnUpdate;
+        this.playerEvents.OnHitConfirm += OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd += OnHitConfirmPauseEnd;
 
-        IsInitialized = true;
+
+        isInitialized = true;
 
         //NoAttack.SetOnAnimaiton(() => { }, 0.5);
 
@@ -196,6 +204,26 @@ public class AttackController
 
 
 
+    }
+
+    public void Deactivate()
+    {
+        NoAttack.Deactivate();
+        NoAttack = null;
+        LightAttack.Deactivate();
+        LightAttack = null;
+        HeaveyAttack.Deactivate();
+        HeaveyAttack = null;
+        SpecialAttack.Deactivate();
+        SpecialAttack = null;
+        LauncherAttack.Deactivate();
+        LauncherAttack = null;
+        ComboList.Clear();
+        this.playerEvents = null;
+        this.playerEvents.OnUpdate -= OnUpdate;
+        this.playerEvents.OnHitConfirm -= OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
+        isInitialized = false;
     }
 
     bool IsComboable(AttackType attackType)
@@ -238,4 +266,6 @@ public class AttackController
 
         _isHitConfirmPause = false;
     }
+
+    
 }

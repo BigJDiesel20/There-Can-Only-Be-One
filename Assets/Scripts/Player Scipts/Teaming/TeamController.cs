@@ -8,6 +8,7 @@ using System.Collections;
 using UnityEngine.Rendering;
 using Rewired;
 using UnityEngine.Events;
+using TMPro.Examples;
 
 [Serializable]
 public class TeamController
@@ -31,6 +32,8 @@ public class TeamController
     [SerializeField]
     private Status _currentStatus;
     public Status CurrentStatus { get { return _currentStatus; } set { _currentStatus = value; onStatusChange?.Invoke(_currentStatus); } }
+
+    private PlayerEvents playerEvents;
     public UnityAction<Status> onStatusChange;
 
     [SerializeField]
@@ -558,17 +561,29 @@ public class TeamController
         hasVoted++;
     }
 
-    public void InitializeTeam(Player gamePad, LocalPlayerManager player, ref GameObject cameraTarget, ref bool isTeamInitialized)
+    public void Initialize(Player gamePad, LocalPlayerManager player, ref GameObject cameraTarget, PlayerEvents playerEvents)
     {
         this.gamePad = gamePad;
         this.player = player;
         this.monoBehaviour = player.GetComponent<MonoBehaviour>();
         this.cameraTarget = cameraTarget;
         this.CurrentStatus = Status.Solo;
-        isTeamInitialized = isInitialized = true;
+        this.playerEvents = playerEvents;
+        this.playerEvents.OnUpdate += OnUpdate;
+        this.playerEvents.TrackTarget += SetTarget;
+        this.playerEvents.OnHitConfirm += OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd += OnHitConfirmPauseEnd;
+        isInitialized = true;
     }
-    
-    
+    public void Deactivate()
+    {
+        this.playerEvents.OnUpdate -= OnUpdate;
+        this.playerEvents.TrackTarget -= SetTarget;
+        this.playerEvents.OnHitConfirm -= OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
+        isInitialized = false;
+    }
+
     public void SetTarget(RaycastHit hitTarget, bool isHit)
     {
         this.isHit = isHit;
@@ -599,4 +614,6 @@ public class TeamController
 
 
     }
+
+    
 }

@@ -51,7 +51,7 @@ public class Attack : IAttackCommand
     Color tempColor;
     [SerializeField] float pushBack = 1;
 
-    EventManager eventManager;
+    PlayerEvents playerEvents;
     
     
 
@@ -100,17 +100,17 @@ public class Attack : IAttackCommand
                 _isHitConfirmPause = false;                
                 
                 //OnHitPauseEnd?.Invoke();
-                eventManager.OnHitConfirmPauseEnd?.Invoke((hitBox,hurtBox));
+                playerEvents.OnHitConfirmPauseEnd?.Invoke((hitBox,hurtBox));
                 switch(_type)
                 {     
                     case AttackController.AttackType.Launcher:
 
-                        eventManager.OnPush?.Invoke(Vector3.up * pushBack);
+                        playerEvents.OnPush?.Invoke(Vector3.up * pushBack);
                         break;
                     default:
                         Vector3 direction = hurtBox.transform.position - hitBox.transform.position;
                         direction.Normalize();
-                        eventManager.OnPush?.Invoke(direction * pushBack);
+                        playerEvents.OnPush?.Invoke(direction * pushBack);
                         break;
                 }                
             }
@@ -151,7 +151,7 @@ public class Attack : IAttackCommand
     {
         if (_coolDownProgress >= 1)
         {
-            eventManager.OnCoolDownComplete?.Invoke();
+            playerEvents.OnCoolDownComplete?.Invoke();
             isCoolDownActive = false;
         }
     }
@@ -162,7 +162,7 @@ public class Attack : IAttackCommand
     {
         if (_animationProgress >= 1)
         {
-            eventManager.OnAnimationComplete?.Invoke();
+            playerEvents.OnAnimationComplete?.Invoke();
             hitboxMaterial.color = new Color(hitboxMaterial.color.r, hitboxMaterial.color.g, hitboxMaterial.color.b, 0);
             //Debug.Log(isAttackAnimationActive);
             isAttackAnimationActive = false;
@@ -182,7 +182,7 @@ public class Attack : IAttackCommand
             tempColor = hitboxMaterial.color;
             Debug.Log($"Hit {hurtBox.name}");
             _isHitConfirmPause = isHitConfirm = true;
-            eventManager.OnHitConfirm?.Invoke((hitBox,hurtBox));
+            playerEvents.OnHitConfirm?.Invoke((hitBox,hurtBox));
             
         }
 
@@ -245,9 +245,9 @@ public class Attack : IAttackCommand
         if (other.CompareTag("Player"))
         {
             LocalPlayerManager otherPlayer = other.GetComponent<HitDetectionManager>().player;
-            eventManager.OnHitConfirm += otherPlayer.eventManager.OnHitConfirm;
-            eventManager.OnHitConfirmPauseEnd += otherPlayer.eventManager.OnHitConfirmPauseEnd;
-            eventManager.OnPush = otherPlayer.eventManager.OnPush;
+            playerEvents.OnHitConfirm += otherPlayer.playerEvents.OnHitConfirm;
+            playerEvents.OnHitConfirmPauseEnd += otherPlayer.playerEvents.OnHitConfirmPauseEnd;
+            playerEvents.OnPush = otherPlayer.playerEvents.OnPush;
             hurtBox = other;
 
         }
@@ -258,16 +258,16 @@ public class Attack : IAttackCommand
         if (other.CompareTag("Player"))
         {
             LocalPlayerManager otherPlayer = other.GetComponent<HitDetectionManager>().player;
-            eventManager.OnHitConfirm -= otherPlayer.eventManager.OnHitConfirm;
+            playerEvents.OnHitConfirm -= otherPlayer.playerEvents.OnHitConfirm;
             if (_isHitConfirmPause == true) 
             {
                 Vector3 direction = hurtBox.transform.position - hitBox.transform.position;
                 direction.Normalize();
-                eventManager.OnHitConfirmPauseEnd?.Invoke((hitBox, hurtBox));
+                playerEvents.OnHitConfirmPauseEnd?.Invoke((hitBox, hurtBox));
                 
-                eventManager.OnPush?.Invoke(direction * pushBack);
+                playerEvents.OnPush?.Invoke(direction * pushBack);
             }
-            eventManager.OnHitConfirmPauseEnd -= otherPlayer.eventManager.OnHitConfirmPauseEnd;
+            playerEvents.OnHitConfirmPauseEnd -= otherPlayer.playerEvents.OnHitConfirmPauseEnd;
 
 
             if (hurtBox == other)
@@ -327,7 +327,7 @@ public class Attack : IAttackCommand
         double progress = Clamp(time, 0, _animationLength) / _animationLength;
         onAnimation.Add((progress, action));
     }
-    public void Initialize(LocalPlayerManager player,Transform character, string hitBoxName, Vector3 hitBoxPosition, Vector3 hitBoxEulerAngle, Vector3 hitBoxScale, double animationLength, double attackBlockLength,float pushBack, AttackType Type,EventManager eventManager)
+    public void Initialize(LocalPlayerManager player,Transform character, string hitBoxName, Vector3 hitBoxPosition, Vector3 hitBoxEulerAngle, Vector3 hitBoxScale, double animationLength, double attackBlockLength,float pushBack, AttackType Type,PlayerEvents eventManager)
     {
         this.player = player;
         GameObject hitboxPrefab = AssetDatabase.LoadAssetAtPath("Assets/Prefabs/Hit Box.prefab", typeof(GameObject)) as GameObject;
@@ -357,10 +357,16 @@ public class Attack : IAttackCommand
         //    hitBox.gameObject.SetActive(false);
         //}
 
-        this.eventManager = eventManager;
+        this.playerEvents = eventManager;
 
 
     }
 
-    
+    public void Deactivate()
+    {
+        TriggerDetectionManager triggerDetection = hitBox.gameObject.GetComponent<TriggerDetectionManager>() as TriggerDetectionManager;
+        triggerDetection.BroadCastOnTriggerEnter -= OnTriggerEnter;
+        triggerDetection.BroadCastOnTriggerExit -= OnTriggerExit;
+        GameObject.Destroy(hitBox.gameObject);
+    }
 }

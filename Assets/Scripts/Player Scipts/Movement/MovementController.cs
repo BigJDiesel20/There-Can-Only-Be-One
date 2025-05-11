@@ -33,7 +33,7 @@ public class MovementController
     private bool isInitialized = false;
     public bool IsInitialized { get { return isInitialized; } }
     [SerializeField] bool _isHitConfirmPause = false;
-
+private PlayerEvents playerEvents;
     //GameObject correctedTransform;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void OnStart()
@@ -125,7 +125,7 @@ public class MovementController
 
     }
 
-    public void Initialize(LocalPlayerManager player, Transform camera, Transform cameraLocation, CameraStateWrapper cameraStateWrapper, GameObject charater, ref bool isMovementInitialized)
+    public void Initialize(LocalPlayerManager player, Transform camera, Transform cameraLocation, CameraStateWrapper cameraStateWrapper, GameObject charater, ref bool isMovementInitialized, PlayerEvents playerEvents)
     {
         gamePad = player.playerGamePad;
         rb = player.character.GetComponent<Rigidbody>();
@@ -139,11 +139,21 @@ public class MovementController
         //correctedTransform.transform.SetParent(player.gameObject.transform);
         isMovementInitialized = isInitialized = true;
 
+        this.playerEvents = playerEvents;
+        this.playerEvents.OnUpdate += OnUpdate;
+        this.playerEvents.OnHitConfirm += OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd += OnHitConfirmPauseEnd;
+        this.playerEvents.OnPush += OnPush;
+
     }
     public void Deactivate()
     {
         gamePad = null;
         rb = null;
+        this.playerEvents.OnUpdate -= OnUpdate;
+        this.playerEvents.OnHitConfirm -= OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
+        this.playerEvents.OnPush -= OnPush;
         //GameObject.Destroy(correctedTransform.gameObject);
         //correctedTransform = null;
 
@@ -156,6 +166,8 @@ public class MovementController
     public float gravity = 5f;
     public enum JumpState { Grounded, Jumping, Falling, Launched }
     public JumpState jumpState;
+    
+
     public Vector3 Jump()
     {
         // when on ground not pressing any thing jump is 0

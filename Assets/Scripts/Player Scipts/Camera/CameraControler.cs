@@ -33,8 +33,7 @@ public class CameraControler
     private RaycastHit hit;
     private bool isHit;
     LayerMask mask; // = LayerMask.GetMask("player");
-    public bool isSwitched = false;
-    public UnityAction<RaycastHit, bool> TrackTarget;
+    public bool isSwitched = false;    
     public GameObject cursor;
     public string PlayerName;
     
@@ -49,6 +48,7 @@ public class CameraControler
 
     CameraStateWrapper cameraStateWapper = new CameraStateWrapper();
     private bool _isHitConfirmPause;
+    private PlayerEvents playerEvents;
 
     public void OnUpdate()
     {
@@ -119,7 +119,7 @@ public class CameraControler
         if (TestObject != null) TestObject.transform.position = TestVector;
 
     }
-    public void InitializeCameraControler(GameObject cameraAnchor, Transform parent, Rewired.Player GamePad, ref bool isCameraControlerInitialized, GameObject cursor, string cameraCullingMask)
+    public void InitializeCameraControler(GameObject cameraAnchor, Transform parent, Rewired.Player GamePad, GameObject cursor, string cameraCullingMask, PlayerEvents playerEvents)
     {
         GameObject cameraLocation = new GameObject("cameraLocation");
         this.cameraLocation = cameraLocation;
@@ -132,7 +132,7 @@ public class CameraControler
 
         this.cameraAnchor = cameraAnchor;
         this.GamePad = GamePad;
-        mask = LayerMask.GetMask("player");
+        mask = LayerMask.GetMask("Player");
         
         
         for (int i = 0; i < 8; i++)
@@ -152,19 +152,24 @@ public class CameraControler
                 
             }
         }
-
-
-        isCameraControlerInitialized = isInitialized = true;
+        this.playerEvents = playerEvents;
+        this.playerEvents.OnUpdate += OnUpdate;
+        this.playerEvents.OnHitConfirm += OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd += OnHitConfirmPauseEnd;
+        isInitialized = true;
     }
 
-    public void DeactivateCameraControler(ref bool isCameraControlerInitialized)
+    public void Deactivate()
     {
         camera = null;
         if (cameraObject != null)
         {
             GameObject.Destroy(cameraObject);
         }
-        isCameraControlerInitialized = isInitialized = false;
+        this.playerEvents.OnUpdate -= OnUpdate;
+        this.playerEvents.OnHitConfirm -= OnHitConfirm;
+        this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
+        isInitialized = false;
     }
 
     public Camera GetCamera()
@@ -210,7 +215,7 @@ public class CameraControler
             cursor.gameObject.SetActive(false);
         }
        
-        TrackTarget?.Invoke(hit, isHit);
+        playerEvents.TrackTarget?.Invoke(hit, isHit);
     }
 
     public CameraStateWrapper GetCameraState()

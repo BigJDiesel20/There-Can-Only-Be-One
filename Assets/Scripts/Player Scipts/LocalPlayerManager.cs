@@ -54,23 +54,12 @@ public class LocalPlayerManager : MonoBehaviour
 
     
 
-    public UnityAction<Vector3> OnHitPauseEnd;
-    public EventManager eventManager = new EventManager(); 
+    
+    public PlayerEvents playerEvents = new PlayerEvents();
 
 
 
-    //public string stringToEdit;
-
-    void OnGUI()
-    {
-        if (isCameraControlerInitialized)
-        {
-            //stringToEdit = (teamController.Members.Count != 0) ? teamController.Members.ToString() : "Solo";
-            //// Make a multiline text area that modifies stringToEdit.
-            ////cameraControler.GetCamera().rect
-            //stringToEdit = GUI.TextArea(cameraControler.GetCamera().rect/*new Rect(10, 10, 200, 100)*/, stringToEdit, 200);
-        }
-    }
+    
 
 
 
@@ -79,7 +68,7 @@ public class LocalPlayerManager : MonoBehaviour
     void Start()
     {
         //playerGamePad = ReInput.players.GetPlayer(0);
-
+        
 
     }
 
@@ -90,7 +79,7 @@ public class LocalPlayerManager : MonoBehaviour
     {
         if (!test)
         {
-            eventManager.OnUpdate?.Invoke();
+            playerEvents.OnUpdate?.Invoke();
             //if (isMovementInitialize) movementController.OnUpdate();
             //if (isCameraControlerInitialized) cameraControler.OnUpdate();
             //if (isTeamInitialized) GetTarget(); team.OnUpdate();
@@ -180,7 +169,7 @@ public class LocalPlayerManager : MonoBehaviour
         material.dynamicFriction = 0;
         material.frictionCombine = PhysicsMaterialCombine.Minimum;
         character.GetComponent<Collider>().material = material;
-        character.layer = LayerMask.NameToLayer("player");
+        character.layer = LayerMask.NameToLayer("Player");
 
 
 
@@ -188,18 +177,17 @@ public class LocalPlayerManager : MonoBehaviour
 
 
         cameraControler = new CameraControler();
-        cameraControler.InitializeCameraControler(character, this.transform, playerGamePad, ref isCameraControlerInitialized, cursor, cameraCullingMask);
-        eventManager.OnUpdate += cameraControler.OnUpdate;
-
+        cameraControler.InitializeCameraControler(character, this.transform, playerGamePad, cursor, cameraCullingMask, playerEvents);
+       
 
         movementController = new MovementController();
-        movementController.Initialize(this, cameraControler.GetCamera().transform, cameraControler.GetCameraLocation(), cameraControler.GetCameraState(), character, ref isMovementInitialize);
-        eventManager.OnUpdate += movementController.OnUpdate;
-        teamController = new TeamController();
-        teamController.InitializeTeam(playerGamePad, this, ref cameraControler.cameraTarget, ref isTeamInitialized);
-        eventManager.OnUpdate += teamController.OnUpdate;
-        cameraControler.TrackTarget += teamController.SetTarget;
+        movementController.Initialize(this, cameraControler.GetCamera().transform, cameraControler.GetCameraLocation(), cameraControler.GetCameraState(), character, ref isMovementInitialize, playerEvents);
+        
 
+
+        teamController = new TeamController();
+        teamController.Initialize(playerGamePad, this, ref cameraControler.cameraTarget,playerEvents);
+        
 
         displayName = displayNameObject.GetComponent<TextMeshPro>();
         displayName.color = Color.black;
@@ -207,29 +195,14 @@ public class LocalPlayerManager : MonoBehaviour
         displayName.transform.SetLocalPositionAndRotation(new Vector3(0, 2, 0), Quaternion.identity);
 
         userInterfaceController = new UserInterfaceController();
-        userInterfaceController.InstatiateMessageBox(cameraControler.GetCamera(), canvas, playerGamePad);
-        eventManager.OnUpdate += userInterfaceController.OnUpdate;
-
-        attackController = new AttackController();
-
-        eventManager.OnHitConfirm += movementController.OnHitConfirm;
-        eventManager.OnHitConfirm += cameraControler.OnHitConfirm;
-        eventManager.OnHitConfirm += teamController.OnHitConfirm;
-        eventManager.OnHitConfirm += userInterfaceController.OnHitConfirm;
-        eventManager.OnHitConfirm += attackController.OnHitConfirm;      
+        userInterfaceController.Initialize(cameraControler.GetCamera(), canvas, playerGamePad, playerEvents);
+        
 
 
-        eventManager.OnHitConfirmPauseEnd += movementController.OnHitConfirmPauseEnd;
-        eventManager.OnHitConfirmPauseEnd += cameraControler.OnHitConfirmPauseEnd;
-        eventManager.OnHitConfirmPauseEnd += teamController.OnHitConfirmPauseEnd;
-        eventManager.OnHitConfirmPauseEnd += userInterfaceController.OnHitConfirmPauseEnd;
-        eventManager.OnHitConfirmPauseEnd += attackController.OnHitConfirmPauseEnd;
 
-        eventManager.OnPush += movementController.OnPush;
-
-        attackController.Initialize(playerGamePad, this, character.transform, eventManager);
-        eventManager.OnUpdate += attackController.OnUpdate;
-
+        attackController = new AttackController(); 
+        attackController.Initialize(playerGamePad, this, character.transform, playerEvents);
+        
     }
     
     public void DeactivatePlayer(Player playerGamePad)
@@ -248,12 +221,8 @@ public class LocalPlayerManager : MonoBehaviour
         }
     }
     public void DeactivatePlayerCharacter()
-    {
-        eventManager.OnUpdate -= cameraControler.OnUpdate;
-        eventManager.OnUpdate -= movementController.OnUpdate;
-        eventManager.OnUpdate -= teamController.OnUpdate;
-        eventManager.OnUpdate -= attackController.OnUpdate;
-        cameraControler.DeactivateCameraControler(ref isCameraControlerInitialized);
+    {    
+        cameraControler.Deactivate();
         cameraControler = null;
         movementController.Deactivate();
         movementController = null;
@@ -261,9 +230,14 @@ public class LocalPlayerManager : MonoBehaviour
         {
             GameObject.Destroy(this.character);
         }
+        teamController.Deactivate();
         teamController = null;
 
+        userInterfaceController.Deactivate();
+        userInterfaceController = null;
 
+        attackController.Deactivate();
+        attackController = null;
 
     }
 
