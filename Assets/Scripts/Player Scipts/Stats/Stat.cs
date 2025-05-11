@@ -1,14 +1,16 @@
 using System;
 using System.Collections;
 using UnityEngine;
-using UnityEngine.Events;
 using static UnityEngine.Rendering.DebugUI;
 
 [Serializable]
 public class Stat
 {
+    [SerializeField]
     float _value;
+    [SerializeField]
     float _min;
+    [SerializeField]
     float _max;
 
     bool _isInitialized;
@@ -18,30 +20,35 @@ public class Stat
 
     MonoBehaviour monoBehaviour;
 
-    public UnityAction<float> OnValueChange;
-    public UnityAction<float> OnMinimumChange;
-    public UnityAction<float> OnMaximumChange;
-    public UnityAction<float> OnPercentageChange;
+    StatEvents statEvents;
 
-    // Detect Death
-    public UnityAction OnValueZero;
-    public UnityAction OnValueMinimum;
-    public UnityAction OnValueMaximum;
-
-    public void Initialize(float value, float min, float max, MonoBehaviour monoBehaviour)
+    public void Initialize(float value, float min, float max, MonoBehaviour monoBehaviour, StatEvents statEvents)
     {
         this._value = value;
         this._min = min;
         this._max = max;
 
         this.monoBehaviour = monoBehaviour;
+        this.statEvents = statEvents;
 
-        OnValueChange?.Invoke(value);
-        OnMinimumChange?.Invoke(min);
-        OnMaximumChange?.Invoke(max);
-        OnPercentageChange?.Invoke(value/max);
+        statEvents.OnValueChange?.Invoke(value);
+        statEvents.OnMinimumChange?.Invoke(min);
+        statEvents.OnMaximumChange?.Invoke(max);
+        statEvents.OnPercentageChange?.Invoke(value/max);
 
         _isInitialized = true;
+    }
+
+    public void DDeactivate()
+    {
+        this._value = 0;
+        this._min = 0;
+        this._max = 0;
+        _debuffValue = 0;
+  monoBehaviour = null;
+        statEvents = null;
+
+        _isInitialized = false;
     }
 
     public float Value { get => (!isDebuffed)?_value:_debuffValue; }
@@ -54,11 +61,11 @@ public class Stat
     {
         this._value += Mathf.Abs(value);
         this._value = Mathf.Clamp(this._value, _min, _max);
-        OnValueChange?.Invoke(this._value);
-        OnPercentageChange?.Invoke(this._value / _max);
+        statEvents.OnValueChange?.Invoke(this._value);
+        statEvents.OnPercentageChange?.Invoke(this._value / _max);
         if (this._value >= _max)
         {
-            OnValueMaximum?.Invoke();
+            statEvents.OnValueMaximum?.Invoke();
         }
 
         
@@ -67,35 +74,35 @@ public class Stat
     {
         this._value -= Mathf.Abs(value);
         this._value = Mathf.Clamp(this._value, _min, _max);
-        OnValueChange(this._value);
-        OnPercentageChange?.Invoke(this._value / _max);
+        statEvents.OnValueChange(this._value);
+        statEvents.OnPercentageChange?.Invoke(this._value / _max);
         if (this._value <= 0)
         {
-            OnValueZero?.Invoke();
+            statEvents.OnValueZero?.Invoke();
         }
 
         if (this._value <= _min)
         {
-            OnValueMinimum?.Invoke();
+            statEvents.OnValueMinimum?.Invoke();
         }
     }
     public void SetValue(float value)
     {
         this._value = Mathf.Abs(value);
         this._value = Mathf.Clamp(this._value, _min, _max);
-        OnValueChange?.Invoke(this._value);
-        OnPercentageChange?.Invoke(this._value / _max);
+        statEvents.OnValueChange?.Invoke(this._value);
+        statEvents.OnPercentageChange?.Invoke(this._value / _max);
         if (this._value <= 0)
         {
-            OnValueZero?.Invoke();
+            statEvents.OnValueZero?.Invoke();
         }
         if (this._value <= _min)
         {
-            OnValueMinimum?.Invoke();
+            statEvents.OnValueMinimum?.Invoke();
         }
         if (this._value >= _max)
         {
-            OnValueMaximum?.Invoke();
+            statEvents.OnValueMaximum?.Invoke();
         }
     }
 
@@ -103,11 +110,11 @@ public class Stat
     {
         this._min = Mathf.Clamp(Mathf.Abs(value),0,_max);
         this._value = Mathf.Clamp(this._value, _min, _max);
-        OnMinimumChange?.Invoke(this._min);
-        OnPercentageChange?.Invoke(this._value / _max);
+        statEvents.OnMinimumChange?.Invoke(this._min);
+        statEvents.OnPercentageChange?.Invoke(this._value / _max);
         if (this._value <= 0)
         {
-            OnValueZero?.Invoke();
+            statEvents.OnValueZero?.Invoke();
         }
     }
 
@@ -115,20 +122,20 @@ public class Stat
     {
         this._max = Mathf.Clamp(Mathf.Abs(value), _min, Mathf.Infinity);
         this._value = Mathf.Clamp(this._value, _min, _max);
-        OnMaximumChange?.Invoke(this._max);
-        OnPercentageChange?.Invoke(this._value / _max);
+        statEvents.OnMaximumChange?.Invoke(this._max);
+        statEvents.OnPercentageChange?.Invoke(this._value / _max);
         if (this._value <= 0)
         {
-            OnValueZero?.Invoke();
+            statEvents.OnValueZero?.Invoke();
         }
        
         if (this._value <= _min)
         {
-            OnValueMinimum?.Invoke();
+            statEvents.OnValueMinimum?.Invoke();
         }
         if (this._value >= _max)
         {
-            OnValueMaximum?.Invoke();
+            statEvents.OnValueMaximum?.Invoke();
         }
     }
 
@@ -136,8 +143,8 @@ public class Stat
     {
         _debuffValue = Mathf.Abs(debuffValue);
         isDebuffed = true;
-        OnValueChange(_debuffValue);
-        OnPercentageChange?.Invoke(_value / _max);
+        statEvents.OnValueChange(_debuffValue);
+        statEvents.OnPercentageChange?.Invoke(_value / _max);
         monoBehaviour.StartCoroutine(Timer(debuffLength));
     }
 
@@ -146,6 +153,6 @@ public class Stat
         yield return new WaitForSeconds(debuffLength);
         isDebuffed = false;
         _debuffValue = _value;
-        OnValueChange(_value);
+        statEvents.OnValueChange(_value);
     }
 }

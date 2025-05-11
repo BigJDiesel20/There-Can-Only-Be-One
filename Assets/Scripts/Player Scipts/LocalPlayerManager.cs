@@ -30,6 +30,8 @@ public class LocalPlayerManager : MonoBehaviour
     public GameObject character;
     public TeamController teamController;
     private bool isTeamInitialized = false;
+
+    public StatController statManager;
     public TeamController.Status CurrentTeamStatus { get { return teamController.CurrentStatus; } set { teamController.CurrentStatus = value; } }
 
     public CameraControler cameraControler;
@@ -172,6 +174,13 @@ public class LocalPlayerManager : MonoBehaviour
         character.layer = LayerMask.NameToLayer("Player");
 
 
+        
+
+
+        statManager = new StatController();
+        statManager.Initialize((100,100), (1, 100), (100, 100), (1, 100), (1000, 1000), (1, 100), (1, 100), this,playerEvents);
+
+
 
 
 
@@ -202,6 +211,8 @@ public class LocalPlayerManager : MonoBehaviour
 
         attackController = new AttackController(); 
         attackController.Initialize(playerGamePad, this, character.transform, playerEvents);
+
+
         
     }
     
@@ -239,11 +250,13 @@ public class LocalPlayerManager : MonoBehaviour
         attackController.Deactivate();
         attackController = null;
 
+        statManager.Deactivate();
+        statManager = null;
+
     }
 
-    
 
-   
+    
 }
 
 

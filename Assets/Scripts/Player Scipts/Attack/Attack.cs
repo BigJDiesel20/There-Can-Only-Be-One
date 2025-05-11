@@ -183,6 +183,10 @@ public class Attack : IAttackCommand
             Debug.Log($"Hit {hurtBox.name}");
             _isHitConfirmPause = isHitConfirm = true;
             playerEvents.OnHitConfirm?.Invoke((hitBox,hurtBox));
+            if (hurtBox != null)
+            {
+                hurtBox.GetComponentInParent<LocalPlayerManager>().playerEvents.OnDamageReceived(new Damage(10,Damage.AttackType.Smash));
+            }
             
         }
 

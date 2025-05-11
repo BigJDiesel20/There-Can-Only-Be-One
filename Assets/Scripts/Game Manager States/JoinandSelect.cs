@@ -109,7 +109,7 @@ public class JoinandSelect : IGameState
                         Canvas canvas = GameObject.Instantiate(gameManager.canvasPrefab).GetComponent<Canvas>();
                         GameObject cursor = GameObject.Instantiate(gameManager.CursorPrefab);
                         int layerIndex = LayerMask.NameToLayer($"P{j + 1}Visible");                        
-                        Debug.LogError(LayerMask.LayerToName(layerIndex));
+                        //Debug.LogError(LayerMask.LayerToName(layerIndex));
                         cursor.layer = (layerIndex == -1)? cursor.layer: layerIndex;
                         string cameraCullingMask = $"P{j + 1}Visible";
 
