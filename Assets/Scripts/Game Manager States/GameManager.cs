@@ -9,6 +9,14 @@ using TMPro;
 
 public class GameManager : MonoBehaviour
 {
+    // ── Game mode ─────────────────────────────────────────────────────────────
+    public enum GameMode { Classic }          // extend as new modes are added
+    public GameMode currentGameMode = GameMode.Classic;
+
+    // ── Match result ──────────────────────────────────────────────────────────
+    /// <summary>Set by Battle when a win condition is met; read by PostGame.</summary>
+    public string lastWinnerName = string.Empty;
+
     [SerializeField] private int playerCount;
     [SerializeField] private int maxPlayerCount;
     
@@ -25,10 +33,19 @@ public class GameManager : MonoBehaviour
 
 
     //public int[] numbers = new int[5];
-    [SerializeField] public List<GameObject> characterPrefabs = new List<GameObject>();
+    [SerializeField] public List<GameObject> characterPrefabs  = new List<GameObject>();
+
+    /// <summary>
+    /// One sprite per character, matched by index to characterPrefabs.
+    /// Assign in the Inspector after taking screenshots of each model.
+    /// </summary>
+    [SerializeField] public List<Sprite> characterThumbnails = new List<Sprite>();
+
     public bool[] isJoinConfirmed;
     public bool[] isCharacterSelect;
-    public bool compltedSelections = false;
+
+    /// <summary>Tracks each player's currently browsed / confirmed colour index.</summary>
+    public int[] characterIndex;
     
     [SerializeField]
     public List<GameObject> playerSlot = new List<GameObject>();
@@ -42,22 +59,28 @@ public class GameManager : MonoBehaviour
     public Canvas canvasPrefab;
 
     public GameObject CursorPrefab;
+
+    /// <summary>
+    /// The split-screen viewport border. Created by Battle on first load (2+ players),
+    /// reused on Replay, and destroyed by PostGame when leaving to CharacterSelect or SplashScreen.
+    /// </summary>
+    [NonSerialized] public CameraViewportBorder viewportBorder;
     
 
 
 
     public void ChangeState(string state)
     {
-        IGameState result = null;
+        // Let the outgoing state clean up before we hand off.
+        currentState?.OnExit();
 
+        IGameState result = null;
         if (states.TryGetValue(state, out result))
         {
             result.OnLoad();
             this.currentState = result;
         }
         Debug.Log(this.currentState.ToString());
-        
-
     }
 
 
@@ -71,29 +94,55 @@ public class GameManager : MonoBehaviour
     //new Viewport(0,0.5,0.5,1);
     // Start is called once before the first execution of Update after the MonoBehaviour is created
 
-    private void Awake()
+
+    uint qsize = 15;
+    Queue myLogQueue = new Queue();
+
+    
+
+
+
+    void HandleLog(string logString, string stackTrace, LogType type)
     {
-        
-        
-        
-        states.Add("PlayerJoin", new JoinandSelect(this));
-        states.Add("CharacterSelect", new CharacterSelect(this));
-        states.Add("CharacterUI", new CharacterUI(this));
-        states.Add("GamePlay", new GamePlay(this));
+        myLogQueue.Enqueue("{" + type + "] :" + logString);
+        myLogQueue.Enqueue(stackTrace);
+        while (myLogQueue.Count > qsize)
+            myLogQueue.Dequeue();
+    }
+
+    void OnEnable()
+    {
+        Application.logMessageReceived += HandleLog;
+    }
+
+    void OnDisable()
+    {
+        Application.logMessageReceived -= HandleLog;
 
     }
+
+
+
+
+
+
+    private void Awake()
+    {
+        states.Add("SplashScreen",    new SplashScreen(this));
+        states.Add("Menu",            new Menu(this));
+        states.Add("Lobby",           new Lobby(this));
+        states.Add("CharacterSelect", new CharacterSelect(this));
+        states.Add("PreGame",         new PreGame(this));
+        states.Add("Battle",          new Battle(this));
+        states.Add("PostGame",        new PostGame(this));
+    }
+
     void Start()
     {
-
-        foreach(var state in states)
-        {
-            state.Value.OnLoad();
-        }
-        ChangeState("PlayerJoin");        
-        //mesh.GetComponent<MeshRenderer>();
+        // Only load the first state. All subsequent OnLoad() calls are
+        // triggered by ChangeState() as the player moves through the flow.
         playerGamePad = ReInput.players.GetPlayer(0);
-        //MeshRenderer mesh = cube.GetComponent<MeshRenderer>();
-        //Debug.Log(mesh.enabled = false);
+        ChangeState("SplashScreen");
     }
 
     // Update is called once per frame
@@ -126,6 +175,19 @@ public class GameManager : MonoBehaviour
     
 
     
+    /// <summary>
+    /// Renames every player slot sequentially (_player 1, _player 2, …).
+    /// Called by Lobby and CharacterSelect whenever the player list changes.
+    /// </summary>
+    public void SetPlayerNames()
+    {
+        for (int i = 0; i < playerSlot.Count; i++)
+        {
+            string name = $"_player {i + 1}";
+            playerSlot[i].GetComponent<LocalPlayerManager>().InitializePlayerName(name);
+        }
+    }
+
     public void AddNewPlayer()
     {
         if (playerCount < maxPlayerCount)
@@ -140,11 +202,11 @@ public class GameManager : MonoBehaviour
                 Quaternion.identity
                 );
             playerList.Add(playerObject);
-            LocalPlayer player = playerObject.GetComponent<LocalPlayer>();
-            player.CreateName(playerCount);
+            LocalPlayer _player = playerObject.GetComponent<LocalPlayer>();
+            _player.CreateName(playerCount);
             if (playerCount <= 4)
             {
-                player.myCamera.rect = new Rect
+                _player.myCamera.rect = new Rect
                     (
                     ScreenQuadrant[playerCount - 1].X,
                     ScreenQuadrant[playerCount - 1].Y,
@@ -152,7 +214,7 @@ public class GameManager : MonoBehaviour
                     ScreenQuadrant[playerCount - 1].Height
                     );
 
-                //player.myCamera.gameObject.SetActive(false);*/
+                //_player.myCamera.gameObject.SetActive(false);*/
             cameras.Add(GameObject.Instantiate(cameraPrefab, new Vector3(UnityEngine.Random.Range(0, 20), UnityEngine.Random.Range(0, 20), UnityEngine.Random.Range(0, 20)), Quaternion.identity));
 
             for (int i = 0; i < playerCount; i++)
@@ -201,10 +263,11 @@ public class Viewport
 
         
     }
-    
 
     
 
     
     
 }
+
+

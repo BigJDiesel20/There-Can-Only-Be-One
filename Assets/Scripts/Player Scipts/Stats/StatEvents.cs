@@ -7,10 +7,13 @@ public class StatEvents
     public UnityAction<float> OnMinimumChange;
     public UnityAction<float> OnMaximumChange;
     public UnityAction<float> OnPercentageChange;
-
+    public UnityAction<bool> OnValueLockChange;
     // Detect Death
     public UnityAction OnValueZero;
     public UnityAction OnValueMinimum;
     public UnityAction OnValueMaximum;
+
+    
+    
 }
 

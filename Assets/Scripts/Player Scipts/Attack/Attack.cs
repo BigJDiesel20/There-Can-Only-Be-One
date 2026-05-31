@@ -1,376 +1,504 @@
-﻿#define DEBUG
+#define DEBUG
 
 using System;
 using UnityEngine;
 using System.Collections.Generic;
-using System.Windows.Input;
-using UnityEditor.PackageManager.Requests;
-using UnityEditor.ShaderGraph.Internal;
-using UnityEngine.TextCore.Text;
-using static AttackController;
 using UnityEditor;
-using UnityEngine.Rendering;
 using UnityEngine.Events;
-using UnityEditor.PackageManager;
 
+/// <summary>
+/// Represents a single attack move.
+///
+/// FRAME-PERFECT DESIGN
+/// ─────────────────────
+/// All timing is measured in frames at a fixed 60 Hz game loop (FixedUpdate).
+/// • No float timers — progress is tracked with integer frame counters.
+/// • Hit detection uses Physics.OverlapBoxNonAlloc called manually each fixed
+///   frame during the active window, NOT OnTriggerEnter callbacks.
+/// • The hitbox collider stays disabled at all times so it generates zero
+///   PhysX trigger overhead.  Its transform is used only as a shape reference
+///   for the manual overlap query.
+/// • Execute() must be called from FixedUpdate (via AttackController).
+/// </summary>
 [Serializable]
 public class Attack : IAttackCommand
 {
+    // ── Identity ──────────────────────────────────────────────────────────
     LocalPlayerManager player;
-    AttackController.AttackType _type;
-    List<(int comboIndex, AttackType attackType)> ComboList;// = new List<(int comboIndex, AttackType attackType)> { (2, AttackType.Light), (3, AttackType.Heavy), };
-    [SerializeField]
-    double animationTimer = 0;
-    [SerializeField]
-    double _animationLength;
-    [SerializeField]
-    double _animationProgress = 0;
-    [SerializeField]
-    double coolDownTimer = 0;
-    [SerializeField]
-    double _coolDownLength;
-    [SerializeField]
-    double _coolDownProgress = 0;
-    Collider hitBox;
+    HitBoxTriggerEvents.AttackType _type;
+    List<(int comboIndex, HitBoxTriggerEvents.AttackType attackType)> ComboList;
+
+    // ── Frame counters ────────────────────────────────────────────────────
+    // All timing at 60 fps.  Progress properties expose 0..1 doubles so the
+    // rest of the codebase needs no changes.
+    // Three phases in order: Startup → Active → Recovery
+    [SerializeField] int _startupFrames;     // frames before the hitbox becomes live
+    [SerializeField] int _startupFrame;      // frames elapsed in startup
+    [SerializeField] int _animationFrames;   // total frames for the active (hit) window
+    [SerializeField] int _animationFrame;    // frames elapsed in current window
+    [SerializeField] int _coolDownFrames;    // total frames for the cool-down block
+    [SerializeField] int _coolDownFrame;     // frames elapsed in cool-down
+
+    // Hit-stun pause: 12 frames = 0.2 s at 60 fps
+    private const int HitStunFrames = 4;
+    [SerializeField] int _hitStunFrame;
+
+    // ── Hitbox / hurtbox ──────────────────────────────────────────────────
+    Collider  hitBox;
     [SerializeField] Collider hurtBox;
     [SerializeField] bool isHitConfirm = false;
-    Material hitboxMaterial;
-    [SerializeField]
-    bool isAttackAnimationActive = false;
-    float startAlbedo;
-    Action onAttack;
-   
-    //UnityAction<Vector3> OnHitPauseEnd;
-    Action onMiss;
-    
-    [SerializeField]
-    bool isCoolDownActive = false;
-    [SerializeField] bool _isHitConfirmPause = false;
-    [SerializeField] double hitStunTimer;
-    [SerializeField] double hitStunLength = .2f;
+    Renderer  hitboxRenderer;
+    Material  hitboxMaterial;
+    [SerializeField] bool isAttackAnimationActive = false;
+    Action    onAttack;
+    Action    onMiss;
+
+    // ── State ─────────────────────────────────────────────────────────────
+    [SerializeField] bool isStartupActive      = false;
+    [SerializeField] bool isCoolDownActive     = false;
+    [SerializeField] bool _isHitConfirmPause   = false;
     Color tempColor;
-    [SerializeField] float pushBack = 1;
+    [SerializeField] float _pushBackDistance;  // distance the defender travels
+    [SerializeField] float _pushBackSpeed;     // computed: pushBackDistance / 0.2s (fixed travel window)
 
     PlayerEvents playerEvents;
-    
-    
 
+    // ── Lunge ──────────────────────────────────────────────────────────────
+    // A lunge moves the player forward during the startup wind-up phase.
+    // Direction is set by AttackController (after snap rotate) so the lunge
+    // always fires toward the snap target, not wherever the stick is pointing.
+    // A SphereCast each frame stops the lunge early if geometry is in the way.
+    Transform  _character;
+    Rigidbody  _rb;
+    float      _lungeDistance;     // total distance to cover over all startup frames
+    float      _lungePerFrame;     // distance applied each startup frame
+    Vector3    _lungeDirection;    // set once per attack by SetLungeDirection
+    bool       _lungeActive;       // false once obstructed or distance exhausted
+    float      _lungeRadius;       // sphere radius for obstruction cast
+    LayerMask  _obstructionMask;   // everything except the Player layer
+    [SerializeField] float _lungeStopGap = 0.3f;  // extra clearance kept between player and obstruction
 
-
-
-
-
+    // ── Timestamped animation callbacks ───────────────────────────────────
     public List<(double time, Action action)> onAnimation = new List<(double time, Action action)>();
 
-    public double AnimationLength { get => _animationLength; set => _animationLength = value; }
-    public double CoolDownLength { get => _coolDownLength; set => _coolDownLength = value; }
+    // ── Properties ────────────────────────────────────────────────────────
+
+    /// <summary>Animation length in seconds (converts to/from internal frame count).</summary>
+    public double AnimationLength
+    {
+        get => _animationFrames / 60.0;
+        set => _animationFrames = Mathf.RoundToInt((float)value * 60f);
+    }
+
+    /// <summary>Cool-down length in seconds.</summary>
+    public double CoolDownLength
+    {
+        get => _coolDownFrames / 60.0;
+        set => _coolDownFrames = Mathf.RoundToInt((float)value * 60f);
+    }
+
     public Collider Hitbox
     {
-        get
-        {
-            return hitBox;
-        }
+        get => hitBox;
         set
         {
-            hitBox = value;
-            hitboxMaterial = hitBox.GetComponent<Renderer>().material;
-            startAlbedo = hitboxMaterial.color.a;
-            hitboxMaterial.color = new Color(hitboxMaterial.color.r, hitboxMaterial.color.g, hitboxMaterial.color.b, 0);
+            hitBox           = value;
+            hitboxRenderer   = hitBox.GetComponent<Renderer>();
+            hitboxMaterial   = hitboxRenderer.material;
+            hitboxRenderer.enabled = false; // invisible until active
             hitBox.isTrigger = true;
+            hitBox.enabled   = false; // never a live trigger — manual overlap only
         }
     }
 
-    public AttackController.AttackType Type { get => _type; set => _type = value; }
-    public bool IsAttackActive { get => isAttackAnimationActive; }
-    public double AnimationProgress { get => _animationProgress; }
-    public double CoolDownProgress { get => _coolDownProgress; }
-    public bool IsHitConfirmPause { get => _isHitConfirmPause; }
+    public HitBoxTriggerEvents.AttackType Type { get => _type; set => _type = value; }
+    public bool   IsAttackActive    => isAttackAnimationActive;
+    public bool   IsHitConfirmPause => _isHitConfirmPause;
 
-    public void Execute()
+    /// <summary>0..1 progress through the startup wind-up window.</summary>
+    public double StartupProgress =>
+        _startupFrames == 0 ? 1.0 : (double)_startupFrame / _startupFrames;
+
+    /// <summary>0..1 progress through the active (hit) window.</summary>
+    public double AnimationProgress =>
+        _animationFrames == 0 ? 1.0 : (double)_animationFrame / _animationFrames;
+
+    /// <summary>0..1 progress through the cool-down block.</summary>
+    public double CoolDownProgress =>
+        _coolDownFrames == 0 ? 1.0 : (double)_coolDownFrame / _coolDownFrames;
+
+    // ── Execute — called from FixedUpdate by AttackController ─────────────
+
+    public void Execute(Collider[] hitBuffer, LayerMask playerMask)
     {
         if (_isHitConfirmPause)
         {
-            hitboxMaterial.color = Color.blue;
-            //Debug.Log($"_isHitConfirmPause is True /{_isHitConfirmPause}");
-            hitStunLength = Clamp(hitStunLength, 0.1, hitStunLength);
-            if (((hitStunTimer += Time.deltaTime) / hitStunLength) >= 1)
-            {
-                hitboxMaterial.color = tempColor;
-                hitStunTimer = 0;
-                _isHitConfirmPause = false;                
-                
-                //OnHitPauseEnd?.Invoke();
-                playerEvents.OnHitConfirmPauseEnd?.Invoke((hitBox,hurtBox));
-                switch(_type)
-                {     
-                    case AttackController.AttackType.Launcher:
-
-                        playerEvents.OnPush?.Invoke(Vector3.up * pushBack);
-                        break;
-                    default:
-                        Vector3 direction = hurtBox.transform.position - hitBox.transform.position;
-                        direction.Normalize();
-                        playerEvents.OnPush?.Invoke(direction * pushBack);
-                        break;
-                }                
-            }
-
+            TickHitStunPause();
+            return;
         }
-        else
+
+        ActivateAttack();
+
+        if (isCoolDownActive && isStartupActive)
         {
-            ActivateAttack();
-
-            if (isCoolDownActive & isAttackAnimationActive)
-            {
-                //Debug.Log($"_isHitConfirmPause is False/{_isHitConfirmPause}");
-                DoWhileAnimationIsActive();
-                DeactivateAttackAnimationOnComplete();
-
-            }
-            else if (isCoolDownActive & !isAttackAnimationActive)
-            {
-                DoWhileAttackBlockIsActive();
-                DeactivateAttackBlockOnComPlete();
-            }
-            else if (!isCoolDownActive & !isAttackAnimationActive)
-            {
-
-            }
+            DoWhileStartupIsActive();
+            DeactivateStartupOnComplete();
         }
-        
-           
-            
-            
-        
-
+        else if (isCoolDownActive && isAttackAnimationActive)
+        {
+            DoWhileAnimationIsActive(hitBuffer, playerMask);
+            DeactivateAttackAnimationOnComplete();
+        }
+        else if (isCoolDownActive && !isStartupActive && !isAttackAnimationActive)
+        {
+            DoWhileAttackBlockIsActive();
+            DeactivateAttackBlockOnComplete();
+        }
     }
 
+    // ── Hit-stun pause ────────────────────────────────────────────────────
 
-
-    private void DeactivateAttackBlockOnComPlete()
+    private void TickHitStunPause()
     {
-        if (_coolDownProgress >= 1)
+        hitboxMaterial.color = Color.green;
+        _hitStunFrame++;
+
+        if (_hitStunFrame < HitStunFrames) return;
+
+        // Pause over — restore colour and fire end events
+        hitboxMaterial.color = tempColor;
+        _hitStunFrame        = 0;
+        _isHitConfirmPause   = false;
+        playerEvents.OnHitConfirmPauseEnd?.Invoke((hitBox, hurtBox));
+
+        if (hurtBox == null) return;
+
+        switch (_type)
         {
-            playerEvents.OnCoolDownComplete?.Invoke();
-            isCoolDownActive = false;
+            case HitBoxTriggerEvents.AttackType.Launcher:
+                hurtBox.GetComponent<PlayerDetection>().PlayerEvents
+                       .OnPush?.Invoke(Vector3.up * _pushBackSpeed);
+                break;
+            default:
+                Vector3 dir = (hurtBox.transform.position - hitBox.transform.position).normalized;
+                dir.y = 0f;
+                hurtBox.GetComponent<PlayerDetection>().PlayerEvents
+                       .OnPush?.Invoke(dir * _pushBackSpeed);
+                break;
         }
     }
 
-
-
-    private void DeactivateAttackAnimationOnComplete()
-    {
-        if (_animationProgress >= 1)
-        {
-            playerEvents.OnAnimationComplete?.Invoke();
-            hitboxMaterial.color = new Color(hitboxMaterial.color.r, hitboxMaterial.color.g, hitboxMaterial.color.b, 0);
-            //Debug.Log(isAttackAnimationActive);
-            isAttackAnimationActive = false;
-        }
-    }
-    private void DoWhileAttackBlockIsActive()
-    {
-        _coolDownProgress = TrackProgress(ref coolDownTimer, _coolDownLength);
-    }
-    private void DoWhileAnimationIsActive()
-    {
-        //_coolDownProgress = TrackProgress(ref coolDownTimer, _coolDownLength);
-        _animationProgress = TrackProgress(ref animationTimer, _animationLength);
-
-        if (hurtBox != null & isHitConfirm == false)
-        {
-            tempColor = hitboxMaterial.color;
-            Debug.Log($"Hit {hurtBox.name}");
-            _isHitConfirmPause = isHitConfirm = true;
-            playerEvents.OnHitConfirm?.Invoke((hitBox,hurtBox));
-            if (hurtBox != null)
-            {
-                hurtBox.GetComponentInParent<LocalPlayerManager>().playerEvents.OnDamageReceived(new Damage(10,Damage.AttackType.Smash));
-            }
-            
-        }
-
-
-        for (int i = 0; i < onAnimation.Count; i++)
-        {
-            if (_animationProgress >= onAnimation[i].time) onAnimation[i].action?.Invoke();
-        }
-
-
-    }
+    // ── Attack lifecycle ──────────────────────────────────────────────────
 
     private void ActivateAttack()
     {
-        if (_coolDownProgress == 0 & _animationProgress == 0)
-        {
-            isCoolDownActive = isAttackAnimationActive = true;
-            onAttack?.Invoke();
-            hitboxMaterial.color = new Color(hitboxMaterial.color.r, hitboxMaterial.color.g, hitboxMaterial.color.b, startAlbedo);
-#if DEBUG
-            //Debug.Log("StartPunch");
-#endif
-        }
-    }
+        // Only starts when fully reset (cooldown and active window both at 0 progress)
+        if (CoolDownProgress != 0.0 || AnimationProgress != 0.0) return;
+        // Guard against re-triggering while startup or active window is still running
+        if (isStartupActive || isAttackAnimationActive) return;
 
-    private double TrackProgress(ref double timer, double Lenght)
-    {
-        if (Lenght != 0)
+        isCoolDownActive = true;
+        onAttack?.Invoke();
+
+        // If this attack has a startup wind-up, enter that phase first.
+        // Otherwise jump straight to the active (hit) window.
+        if (_startupFrames > 0)
         {
-            return Clamp((timer += Time.deltaTime) / Lenght,0,1);
-            //Debug.Log($"_coolDownProgress: {_coolDownProgress}");
+            isStartupActive        = true;
+            hitboxRenderer.enabled = true;
+            hitboxMaterial.color   = Color.blue; // Blue during startup
         }
         else
         {
-            return 1;
-            //Debug.Log($"_coolDownProgress: {_coolDownProgress}");
+            isAttackAnimationActive = true;
+            hitboxRenderer.enabled  = true;
+            hitboxMaterial.color    = Color.red; // Red during active
         }
-
-
-        
     }
-    double Clamp(double value,double min,double max)
+
+    /// <summary>Counts up during the startup wind-up and advances the lunge.</summary>
+    private void DoWhileStartupIsActive()
+    {
+        _startupFrame++;
+        ApplyLunge();
+    }
+
+    /// <summary>
+    /// Moves the player forward by one frame's worth of lunge distance.
+    /// Stops early if a SphereCast detects geometry in the path.
+    /// </summary>
+    private void ApplyLunge()
+    {
+        if (!_lungeActive || _rb == null || _lungePerFrame == 0f) return;
+
+        // Cast a sphere forward by the per-frame step to check for obstruction.
+        // Origin is raised to mid-body height so the cast doesn't scrape the floor.
+        // SphereCast will not detect colliders that overlap the origin, so the
+        // attacker's own capsule is naturally skipped.
+        Vector3 origin = _character.position + Vector3.up * (_lungeRadius + 0.05f);
+
+        if (Physics.SphereCast(origin, _lungeRadius, _lungeDirection,
+                               out RaycastHit hit, _lungePerFrame, _obstructionMask,
+                               QueryTriggerInteraction.Ignore))
         {
-            return (value <= min) ? min : (value >= max) ? max : value;
+            // Stop the player short of the obstruction by _lungeStopGap units.
+            // hit.distance is already sphere-center-to-surface, so subtracting the
+            // gap keeps the character visibly clear of the obstacle.
+            float safeDistance = Mathf.Max(0f, hit.distance - _lungeStopGap);
+            if (safeDistance > 0f)
+                _rb.MovePosition(_rb.position + _lungeDirection * safeDistance);
+
+            _rb.linearVelocity = new Vector3(0f, _rb.linearVelocity.y, 0f);
+            _lungeActive = false;
+            return;
         }
+        // If the path is clear, velocity carries the player — nothing else needed.
+    }
+
+    /// <summary>Transitions from startup into the active (hit) window once wind-up is done.</summary>
+    private void DeactivateStartupOnComplete()
+    {
+        if (_startupFrame < _startupFrames) return;
+        isStartupActive         = false;
+        isAttackAnimationActive = true;
+        hitboxMaterial.color    = Color.red; // Red — hitbox is now live (renderer already enabled)
+
+        // Lunge finished — kill horizontal velocity so the player stops cleanly
+        // at the end of the wind-up rather than sliding into the active window.
+        if (_lungeActive && _rb != null)
+        {
+            _rb.linearVelocity = new Vector3(0f, _rb.linearVelocity.y, 0f);
+            _lungeActive = false;
+        }
+    }
+
+    private void DoWhileAnimationIsActive(Collider[] hitBuffer, LayerMask playerMask)
+    {
+        _animationFrame++;
+
+        // Manual hit detection — runs synchronously this frame
+        CheckHits(hitBuffer, playerMask);
+
+        // Fire any timestamped animation callbacks
+        for (int i = 0; i < onAnimation.Count; i++)
+        {
+            if (AnimationProgress >= onAnimation[i].time)
+                onAnimation[i].action?.Invoke();
+        }
+    }
+
+    private void DoWhileAttackBlockIsActive()    => _coolDownFrame++;
+
+    private void DeactivateAttackAnimationOnComplete()
+    {
+        if (_animationFrame < _animationFrames) return;
+
+        playerEvents.OnAnimationComplete?.Invoke();
+        hitboxRenderer.enabled  = false; // completely invisible during recovery and idle
+        isAttackAnimationActive = false;
+    }
+
+    private void DeactivateAttackBlockOnComplete()
+    {
+        if (_coolDownFrame < _coolDownFrames) return;
+
+        playerEvents.OnCoolDownComplete?.Invoke();
+        isCoolDownActive = false;
+    }
+
+    // ── Hit detection ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Manual OverlapBox query each active frame.
+    /// The hitbox collider is disabled so there is zero PhysX trigger
+    /// overhead — we compute world-space bounds from the transform directly.
+    /// </summary>
+    private void CheckHits(Collider[] hitBuffer, LayerMask playerMask)
+    {
+        if (isHitConfirm) return;
+
+        BoxCollider box = hitBox as BoxCollider;
+        if (box == null) return;
+
+        // World-space center and half-extents (works even when collider is disabled)
+        Vector3 worldCenter  = hitBox.transform.TransformPoint(box.center);
+        Vector3 halfExtents  = Vector3.Scale(box.size * 0.5f, hitBox.transform.lossyScale);
+        halfExtents = new Vector3(Mathf.Abs(halfExtents.x),
+                                  Mathf.Abs(halfExtents.y),
+                                  Mathf.Abs(halfExtents.z));
+
+        int hitCount = Physics.OverlapBoxNonAlloc(
+            worldCenter, halfExtents, hitBuffer,
+            hitBox.transform.rotation, playerMask);
+
+        for (int i = 0; i < hitCount; i++)
+        {
+            PlayerDetection pd = hitBuffer[i].GetComponent<PlayerDetection>();
+            if (pd == null || pd.Player == player) continue;
+
+            // Register the first valid hit and enter hit-stun pause
+            hurtBox   = hitBuffer[i];
+            tempColor = hitboxMaterial.color;
+
+#if DEBUG
+            Debug.Log($"[Attack] Hit {hurtBox.name} — type={_type}  frame={_animationFrame}/{_animationFrames}");
+#endif
+            isHitConfirm = _isHitConfirmPause = true;
+            playerEvents.OnHitConfirm?.Invoke((hitBox, hurtBox));
+            pd.PlayerEvents.OnDamageReceived(new Damage(10, Damage.AttackType.Smash));
+            break; // one target per frame
+        }
+    }
+
+    // ── Public API ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Called by AttackController immediately after snap rotation so the lunge
+    /// always fires toward the correct target.
+    /// <paramref name="direction"/> should be a normalised horizontal vector;
+    /// pass the player's current forward if there is no snap target.
+    /// </summary>
+    public void SetLungeDirection(Vector3 direction)
+    {
+        _lungeDirection = direction;
+        _lungeActive    = _lungePerFrame > 0f;
+
+        if (_lungeActive && _rb != null)
+        {
+            // Apply horizontal lunge velocity once. _lungePerFrame * 60 converts
+            // the per-fixed-frame distance back to m/s. Y is preserved so gravity
+            // continues uninterrupted.
+            float speed = _lungePerFrame * 60f;
+            _rb.linearVelocity = new Vector3(
+                _lungeDirection.x * speed,
+                _rb.linearVelocity.y,
+                _lungeDirection.z * speed);
+        }
+    }
+
     public void ResetAttack()
     {
-        _coolDownProgress = coolDownTimer = _animationProgress = animationTimer = 0;
-        isCoolDownActive = isAttackAnimationActive = isHitConfirm = false;
+        _startupFrame = _animationFrame = _coolDownFrame = _hitStunFrame = 0;
+        isStartupActive = isCoolDownActive = isAttackAnimationActive = isHitConfirm = _isHitConfirmPause = false;
+        hurtBox = null;
+
+        // If a lunge was mid-flight when the attack was reset (e.g. combo chained
+        // during startup), kill the horizontal velocity immediately.
+        if (_lungeActive && _rb != null)
+            _rb.linearVelocity = new Vector3(0f, _rb.linearVelocity.y, 0f);
+        _lungeActive = false;
     }
 
-
-    public void AddTimeStapededAction(int timeStame, Action action)
+    public bool IsComboAble(int ComboIndex, HitBoxTriggerEvents.AttackType attackType)
     {
-        onAnimation.Add((timeStame, action));
+        if (ComboList == null) return false;
+        int next = ComboIndex + 1;
+        for (int i = 0; i < ComboList.Count; i++)
+            if (ComboList[i].comboIndex == next && ComboList[i].attackType == attackType)
+                return true;
+        return false;
     }
 
-    public void OnTriggerEnter(Collider other)
-    {
-        if (other.CompareTag("Player"))
-        {
-            LocalPlayerManager otherPlayer = other.GetComponent<HitDetectionManager>().player;
-            playerEvents.OnHitConfirm += otherPlayer.playerEvents.OnHitConfirm;
-            playerEvents.OnHitConfirmPauseEnd += otherPlayer.playerEvents.OnHitConfirmPauseEnd;
-            playerEvents.OnPush = otherPlayer.playerEvents.OnPush;
-            hurtBox = other;
+    public void SetCombos(List<(int comboIndex, HitBoxTriggerEvents.AttackType attackType)> combos)
+        => ComboList = combos;
 
-        }
-    }
-
-    public void OnTriggerExit(Collider other)
-    {
-        if (other.CompareTag("Player"))
-        {
-            LocalPlayerManager otherPlayer = other.GetComponent<HitDetectionManager>().player;
-            playerEvents.OnHitConfirm -= otherPlayer.playerEvents.OnHitConfirm;
-            if (_isHitConfirmPause == true) 
-            {
-                Vector3 direction = hurtBox.transform.position - hitBox.transform.position;
-                direction.Normalize();
-                playerEvents.OnHitConfirmPauseEnd?.Invoke((hitBox, hurtBox));
-                
-                playerEvents.OnPush?.Invoke(direction * pushBack);
-            }
-            playerEvents.OnHitConfirmPauseEnd -= otherPlayer.playerEvents.OnHitConfirmPauseEnd;
-
-
-            if (hurtBox == other)
-            {
-                hurtBox = null;
-            }
-        }
-    }
-    public bool IsComboAble(int ComboIndex, AttackType attackType)
-    {
-        bool isComboAble = false;
-
-        if (ComboList != null)
-        {
-
-            for (int i = 0; i < ComboList.Count; i++)
-            {
-                int NextComboIndex = ComboIndex + 1;
-                if (ComboList[i].comboIndex == NextComboIndex & ComboList[i].attackType == attackType)
-                {
-                    isComboAble = true;
-                }
-#if DEBUG == true
-                //Debug.Log($"{attackType.ToString()} is {((isComboAble) ? "ComboAble" : "ComboAble")} at index {NextComboIndex}");
-#endif
-            }
-        }
-        return isComboAble;
-    }
-    public void SetCombos(List<(int comboIndex, AttackType attackType)> combos)
-    {
-        ComboList = combos;
-    }
-    
-
-    
-
-    
-
-    /// <summary>
-    /// Set a Action to be exicuted after a specified percentage of the animation is played.
-    /// </summary>
-    /// <param name="action"> The method you want to trigger.</param>
-    /// <param name="animationProgress">The Precentage point that you want you method to exicute. Number must be between 0 and 1.</param>
+    /// <summary>Schedule an action at a normalised progress point (0..1).</summary>
     public void SetOnAnimaiton(Action action, double animationProgress)
-    {
-        onAnimation.Add((animationProgress, action));
-    }
+        => onAnimation.Add((animationProgress, action));
 
-    /// <summary>
-    /// Set a Action to be exicuted at a spesific point in time during the animation.
-    /// </summary>
-    /// <param name="action">The method you want to trigger.</param>
-    /// <param name="time">The Time stamp that you want you method to play. Must add (f) to specifiy float or cast as float.</param>
+    /// <summary>Schedule an action at an absolute time (seconds) within the animation.</summary>
     public void SetOnAnimaiton(Action action, float time = 0f)
     {
-        double progress = Clamp(time, 0, _animationLength) / _animationLength;
+        double animLength = _animationFrames / 60.0;
+        double progress   = animLength == 0 ? 0.0 : Clamp(time, 0, animLength) / animLength;
         onAnimation.Add((progress, action));
     }
-    public void Initialize(LocalPlayerManager player,Transform character, string hitBoxName, Vector3 hitBoxPosition, Vector3 hitBoxEulerAngle, Vector3 hitBoxScale, double animationLength, double attackBlockLength,float pushBack, AttackType Type,PlayerEvents eventManager)
+
+    public void AddTimeStampedAction(int frame, Action action)
     {
-        this.player = player;
-        GameObject hitboxPrefab = AssetDatabase.LoadAssetAtPath("Assets/Prefabs/Hit Box.prefab", typeof(GameObject)) as GameObject;
+        // frame expressed as a progress fraction so it lines up with the existing list
+        double progress = _animationFrames == 0 ? 0.0 : (double)frame / _animationFrames;
+        onAnimation.Add((progress, action));
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+
+    public void Initialize(
+        LocalPlayerManager player,
+        Transform          character,
+        string             hitBoxName,
+        Vector3            hitBoxPosition,
+        Vector3            hitBoxEulerAngle,
+        Vector3            hitBoxScale,
+        double             startupLength,      // frames before the hitbox is live (wind-up)
+        double             animationLength,    // frames the hitbox is active (hit window)
+        double             attackBlockLength,  // frames of recovery after the active window
+        float              pushBackDistance,   // distance the defender is pushed (speed = dist / 0.2s)
+        float              lungeDistance,      // total forward distance during startup (0 = no lunge)
+        HitBoxTriggerEvents.AttackType type,
+        PlayerEvents       playerEvents)
+    {
+        this.player           = player;
+        this.playerEvents     = playerEvents;
+        _pushBackDistance     = pushBackDistance;
+        _type                 = type;
+
+        // ── Pushback speed ─────────────────────────────────────────────────
+        // Fixed travel window for pushback — independent of HitStunFrames so
+        // tuning the freeze duration does not affect how far the defender flies.
+        // speed = distance / duration  — same formula as lunge.
+        const float pushBackTravelDuration = 0.2f;  // seconds the defender travels after hit-stun
+        _pushBackSpeed = pushBackDistance > 0f ? pushBackDistance / pushBackTravelDuration : 0f;
+
+        // ── Lunge setup ────────────────────────────────────────────────────
+        _character       = character;
+        _lungeDistance   = lungeDistance;
+        _rb              = character.GetComponentInParent<Rigidbody>()
+                        ?? character.GetComponentInChildren<Rigidbody>();
+        _obstructionMask = Physics.DefaultRaycastLayers;  // includes players and geometry
+
+        // Derive sphere radius from the character's CapsuleCollider if available.
+        CapsuleCollider cap = character.GetComponentInParent<CapsuleCollider>();
+        _lungeRadius = cap != null ? cap.radius * 0.9f : 0.3f;
+
+        // Spawn the hitbox prefab
+        GameObject hitboxPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Hit Box.prefab");
         hitBox = GameObject.Instantiate(hitboxPrefab).GetComponent<BoxCollider>();
+
         hitBox.isTrigger = true;
+        hitBox.enabled   = false;   // ← never live — manual overlap only, zero trigger cost
         hitBox.transform.SetParent(character);
-        hitBox.gameObject.name = hitBoxName;
-        hitBox.transform.localPosition = hitBoxPosition;
-        hitBox.transform.localEulerAngles = hitBoxEulerAngle;
-        hitBox.transform.localScale = hitBoxScale;
-        TriggerDetectionManager triggerDetection = hitBox.gameObject.AddComponent<TriggerDetectionManager>() as TriggerDetectionManager;
-        triggerDetection.BroadCastOnTriggerEnter += OnTriggerEnter;
-        triggerDetection.BroadCastOnTriggerExit += OnTriggerExit;        
-        _animationLength = animationLength;
-        _coolDownLength = attackBlockLength;
+        hitBox.gameObject.name               = hitBoxName;
+        hitBox.transform.localPosition       = hitBoxPosition;
+        hitBox.transform.localEulerAngles    = hitBoxEulerAngle;
+        hitBox.transform.localScale          = hitBoxScale;
 
-        _type = Type;
-        this.pushBack = pushBack;
+        // Convert seconds → frames (60 Hz fixed loop)
+        _startupFrames   = Mathf.RoundToInt((float)startupLength    * 60f);
+        _animationFrames = Mathf.RoundToInt((float)animationLength  * 60f);
+        _coolDownFrames  = Mathf.RoundToInt((float)attackBlockLength * 60f);
 
-        hitboxMaterial = hitBox.GetComponent<Renderer>().material;
-        startAlbedo = hitboxMaterial.color.a;
-        hitboxMaterial.color = new Color(hitboxMaterial.color.r, hitboxMaterial.color.g, hitboxMaterial.color.b, 0);
-        hitBox.isTrigger = true;
+        // Spread the total lunge distance evenly across all startup frames.
+        // Zero if there is no startup window or no lunge distance.
+        _lungePerFrame = (_startupFrames > 0 && _lungeDistance > 0f)
+            ? _lungeDistance / _startupFrames
+            : 0f;
 
-        //if (hitBoxScale == Vector3.zero)
-        //{
-        //    hitBox.gameObject.SetActive(false);
-        //}
-
-        this.playerEvents = eventManager;
-
-
+        // Renderer setup — disabled until the attack is active (truly invisible, not just alpha=0)
+        hitboxRenderer         = hitBox.GetComponent<Renderer>();
+        hitboxMaterial         = hitboxRenderer.material;
+        hitboxRenderer.enabled = false;
     }
 
     public void Deactivate()
     {
-        TriggerDetectionManager triggerDetection = hitBox.gameObject.GetComponent<TriggerDetectionManager>() as TriggerDetectionManager;
-        triggerDetection.BroadCastOnTriggerEnter -= OnTriggerEnter;
-        triggerDetection.BroadCastOnTriggerExit -= OnTriggerExit;
-        GameObject.Destroy(hitBox.gameObject);
+        this.playerEvents = null;
+        if (hitBox != null) GameObject.Destroy(hitBox.gameObject);
+        hitBox = null;
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    private static double Clamp(double value, double min, double max)
+        => value <= min ? min : value >= max ? max : value;
 }

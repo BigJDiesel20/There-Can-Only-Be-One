@@ -1,11 +1,12 @@
 using UnityEngine;
-using UnityEngine.Events;
 
-public class TriggerDetectionManager : MonoBehaviour
+public class HitBoxTriggerDetection : MonoBehaviour
 {
     [SerializeField] Collider other;
-    public UnityAction<Collider> BroadCastOnTriggerEnter;
-    public UnityAction<Collider> BroadCastOnTriggerExit;
+    [SerializeField] HitBoxTriggerEvents _triggerEvents;
+
+    public HitBoxTriggerEvents TriggerEvents { get => _triggerEvents;}
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
@@ -26,7 +27,7 @@ public class TriggerDetectionManager : MonoBehaviour
         {
             this.other = other;
         }
-        BroadCastOnTriggerEnter(other);
+        _triggerEvents.BroadCastOnTriggerEnter(other);
     }
 
     private void OnTriggerExit(Collider other)
@@ -38,6 +39,18 @@ public class TriggerDetectionManager : MonoBehaviour
                 this.other = null;
             }
         }
-        BroadCastOnTriggerExit(other);
+        _triggerEvents.BroadCastOnTriggerExit(other);
+    }
+
+    public void Initialize(HitBoxTriggerEvents triggerEvents)
+    {
+        
+       _triggerEvents = triggerEvents;
+    }
+
+    public void Deactivate()
+    {
+        _triggerEvents = null;
+        other = null;
     }
 }

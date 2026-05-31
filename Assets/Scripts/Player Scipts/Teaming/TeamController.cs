@@ -14,20 +14,12 @@ using TMPro.Examples;
 public class TeamController
 {
     private MonoBehaviour monoBehaviour;
-    private Player gamePad;
+    private PlayerInput gamePad;
     private LocalPlayerManager player;
-    LocalPlayerManager Taeget;
-    [SerializeField]
-    private GameObject cameraTarget;
-    [SerializeField]
-    private Status targetStaus; 
-    [SerializeField]
-    private RaycastHit hitTarget;
-    private bool isHit;
     private double messageDuration = 10;
     
-    [SerializeField]
-    
+    //[SerializeField]  
+
     public enum Status { Solo, Leader, Follower }
     [SerializeField]
     private Status _currentStatus;
@@ -55,91 +47,57 @@ public class TeamController
 
     private bool isInitialized = false;
     private bool _isHitConfirmPause;
+    private LocalPlayerManager _orbitTarget = null;
 
     public bool IsInitialized { get { return isInitialized; } }
 
 
-    public void OnUpdate()
+public void OnUpdate()
     {
-        if (isHit)
+        LocalPlayerManager targetPlayer = _orbitTarget;
+
+        if (targetPlayer == null) return;
+
+        if (gamePad.GetButtonDown("Right Stick Button"))
         {
-            if (gamePad.GetButtonDown("Right Stick Button"))
+            if (team != null)
             {
-                
-
-
-                LocalPlayerManager otherPlayer = hitTarget.transform.GetComponentInParent<LocalPlayerManager>();
-                Debug.Log(hitTarget.transform.gameObject);
-
-                if (otherPlayer != null)
-                {
-                    
-                    if (team != null)
-                    {
-                        // If I am teamed and i taget a teammember
-                        if (team.IsCurrentMember(otherPlayer))
-                        {
-                            
-                            player.LaunchMessage("Choose Action", ()=> { QuitTeam();}, ()=> { Mutiny(otherPlayer); },() => { KickMember(otherPlayer); }, () => { } ,("QuitTeam","Mutiny" ,"KickMember","Exit"  ), 10);
-                        }
-                        else // If im teamed and I target a non teammember
-                        {
-                            player.LaunchMessage("Choose Action", () => { Invite(otherPlayer); }, () => { JoinRequest(otherPlayer); }, () => { }, ("Invite", "JoinRequest", "Exit"), 10);
-                        }
-                        
-                    }
-                    else
-                    {
-                        player.LaunchMessage("Choose Action", () => { Invite(otherPlayer); }, () => { JoinRequest(otherPlayer); }, () => { }, ("Invite", "JoinRequest", "Exit"), 10);
-                        //invite other player doesn't have a team                                        
-                    }
-                    // = (otherPlayer.teamController.team.CurrentStatus //  == Team.Status.Leader);
-
-                    //UnityAction invite = () => { AddMember(otherPlayer); Debug.Log($"{otherPlayer.name} acepts invatation to {player.name} team"); };
-                    //UnityAction JoinRequest = () => { otherPlayer.teamController.AddMember(player); Debug.Log($"{otherPlayer.name} acepts {player.name} request to join there team"); };
-                    //UnityAction Quite = () => { otherPlayer.teamController.RemoveMember(player);Debug.Log($"{player} quites {otherPlayer} team") };
-                    //UnityAction Kick = () => { RemoveMember(otherPlayer); Debug.Log($"Kick {otherPlayer} off of {player} team ") };
-                    //UnityAction Muntiny = () => {V };
-
-                    //if (otherPlayer.teamController.Leader == null or)
-                    //{
-                    //    otherPlayer.LaunchMessage("Do you want to join my team?", invite);
-                    //}
-                    //otherPlayer.LaunchMessaage("May I Join your team");
-                }
-
-
-                //CharacterController characterController;
-
+                if (team.IsCurrentMember(targetPlayer))
+                    player.LaunchMessage("Choose Action", () => { QuitTeam(); }, () => { Mutiny(targetPlayer); }, () => { KickMember(targetPlayer); }, () => { }, ("QuitTeam", "Mutiny", "KickMember", "Exit"), 10);
+                else
+                    player.LaunchMessage("Choose Action", () => { Invite(targetPlayer); }, () => { JoinRequest(targetPlayer); }, () => { }, ("Invite", "JoinRequest", "Exit"), 10);
             }
-
-
-            if (gamePad.GetButtonDown("Right Trigger"))
+            else
             {
-                if (team != null)
-                {
-                    LocalPlayerManager otherPlayer = hitTarget.transform.GetComponentInParent<LocalPlayerManager>();
-                    if (team.IsCurrentMember(otherPlayer))
-                    {
-                        KickMember(otherPlayer);
-                    }
-                }
-                
+                player.LaunchMessage("Choose Action", () => { Invite(targetPlayer); }, () => { JoinRequest(targetPlayer); }, () => { }, ("Invite", "JoinRequest", "Exit"), 10);
             }
+        }
 
-            if (gamePad.GetButtonDown("Left Trigger"))
-            {
-                if (team != null)
-                {
+        if (gamePad.GetButtonDown("Right Trigger"))
+        {
+            if (team != null && team.IsCurrentMember(targetPlayer))
+                KickMember(targetPlayer);
+        }
 
-                    QuitTeam();
-                    
-                    
-                }
-            }
-
+        if (gamePad.GetButtonDown("Left Trigger"))
+        {
+            if (team != null)
+                QuitTeam();
         }
     }
+
+    // ── TeamRules feedback messages ───────────────────────────────────────────
+
+    private string MaxTeamsMsg() =>
+        $"Cannot form more teams — max {TeamRules.GetMaxTeams()} allowed " +
+        $"(largest team has {TeamRules.GetLargestTeamSize()} members).";
+
+    private string MaxTeamSizeMsg() =>
+        $"Cannot join — team is full. " +
+        $"Max {TeamRules.GetMaxTeamSize()} members per team with " +
+        $"{TeamRules.GetActiveTeamCount()} teams active.";
+
+    // ── JoinRequest ───────────────────────────────────────────────────────────
 
     private void JoinRequest(LocalPlayerManager otherPlayer)
     {
@@ -151,23 +109,27 @@ public class TeamController
         {
 
             case (Status.Solo, Status.Solo):
-
                 OnOtherPlayerConfirm = () =>
-                {                    
-                    otherPlayer.teamController.team.AddMember(otherPlayer);
-                    otherPlayer.teamController.team.AddMember(player);
+                {
+                    if (TeamRules.WouldExceedMaxTeams())
+                    { player.LaunchMessage(MaxTeamsMsg(), () => { }, "OK", messageDuration); return; }
+                    team = new Team();
+                    team.AddMember(player);
+                    team.AddMember(otherPlayer);
                     otherPlayer.teamController.team = this.team;
                 };
-                team = new Team();
                 otherPlayer.LaunchMessage($"Can we team up!", OnOtherPlayerConfirm, "Accept", messageDuration);
-
-                break; 
+                break;
 
             case (Status.Solo, Status.Leader):
                 OnOtherPlayerConfirm = () =>
                 {
                     Debug.Log($"Status.Solo, Status.Leader");
                     otherPlayer.teamController.team.RemoveAllMembers();
+                    // Dissolution already reduced the count — check is still correct here.
+                    if (TeamRules.WouldExceedMaxTeams())
+                    { player.LaunchMessage(MaxTeamsMsg(), () => { }, "OK", messageDuration); return; }
+                    team = new Team();
                     team.AddMember(player);
                     team.AddMember(otherPlayer);
                     otherPlayer.teamController.team = this.team;
@@ -180,13 +142,13 @@ public class TeamController
                 {
                     UnityAction LearderConfirm = () =>
                     {
-                        otherPlayer.teamController.team.GetLeader().teamController.team.AddMember(player);
-                        player.teamController.team = otherPlayer.teamController.team.GetLeader().teamController.team;
+                        Team leaderTeam = otherPlayer.teamController.team.GetLeader().teamController.team;
+                        if (!leaderTeam.AddMember(player))
+                        { player.LaunchMessage(MaxTeamSizeMsg(), () => { }, "OK", messageDuration); return; }
+                        player.teamController.team = leaderTeam;
                     };
-                    otherPlayer.teamController.team.GetLeader().LaunchMessage($"Can {player.name} join our team",LearderConfirm, "Accept", messageDuration);
+                    otherPlayer.teamController.team.GetLeader().LaunchMessage($"Can {player.name} join our team", LearderConfirm, "Accept", messageDuration);
                 };
-
-                
                 otherPlayer.LaunchMessage($"Can I join join your team", OnOtherPlayerConfirm, "Ask", messageDuration);
                 break;
 
@@ -194,11 +156,16 @@ public class TeamController
             case (Status.Leader, Status.Solo):
                 OnOtherPlayerConfirm = () =>
                 {
-
                     team.RemoveAllMembers();
-                    otherPlayer.teamController.team.AddMember(otherPlayer);
-                    otherPlayer.teamController.team.AddMember(player);
-                    player.teamController.team = otherPlayer.teamController.team;
+                    // RemoveAllMembers nulls this.team, so create a fresh one.
+                    // Count is neutral (dissolved 1, about to create 1) — check still guards edge cases.
+                    if (TeamRules.WouldExceedMaxTeams())
+                    { player.LaunchMessage(MaxTeamsMsg(), () => { }, "OK", messageDuration); return; }
+                    Team newTeam = new Team();
+                    newTeam.AddMember(otherPlayer);
+                    newTeam.AddMember(player);
+                    this.team = newTeam;
+                    otherPlayer.teamController.team = newTeam;
                 };
                 otherPlayer.LaunchMessage($"I'll abandon my team if I can join you!", OnOtherPlayerConfirm, "Accept", messageDuration);
                 break;
@@ -206,8 +173,9 @@ public class TeamController
                 OnOtherPlayerConfirm = () =>
                 {
                     team.RemoveAllMembers();
-                    otherPlayer.teamController.team.AddMember(player);
-                     this.team= otherPlayer.teamController.team;
+                    if (!otherPlayer.teamController.team.AddMember(player))
+                    { player.LaunchMessage(MaxTeamSizeMsg(), () => { }, "OK", messageDuration); return; }
+                    this.team = otherPlayer.teamController.team;
                 };
                 otherPlayer.LaunchMessage($"I'll Abandon my team if I can join Yours!", OnOtherPlayerConfirm, "Accept", messageDuration);
                 break;
@@ -216,46 +184,43 @@ public class TeamController
                 {
                     UnityAction OnLeaderConfirm = () =>
                     {
-                        otherPlayer.teamController.team.GetLeader().teamController.team.AddMember(player);
-                        this.team = otherPlayer.teamController.team.GetLeader().teamController.team;
+                        Team leaderTeam = otherPlayer.teamController.team.GetLeader().teamController.team;
+                        if (!leaderTeam.AddMember(player))
+                        { player.LaunchMessage(MaxTeamSizeMsg(), () => { }, "OK", messageDuration); return; }
+                        this.team = leaderTeam;
                     };
-                    otherPlayer.teamController.team.GetLeader().LaunchMessage($"Can {player.name} Join our team", OnLeaderConfirm, "Accept",messageDuration);
+                    otherPlayer.teamController.team.GetLeader().LaunchMessage($"Can {player.name} Join our team", OnLeaderConfirm, "Accept", messageDuration);
                 };
                 otherPlayer.LaunchMessage($"Leave your Team and Join My Team!", OnOtherPlayerConfirm, "Ask Leader", messageDuration);
                 break;
 
 
             case (Status.Follower, Status.Solo):
-
-                
-                    OnOtherPlayerConfirm = () =>
-                    {
-                        team.RemoveMember(player);
-                        otherPlayer.teamController.team.AddMember(otherPlayer);
-                        otherPlayer.teamController.team.AddMember(player);
-                        this.team = otherPlayer.teamController.team;
-                    };
-
-                   
-                
-
+                OnOtherPlayerConfirm = () =>
+                {
+                    team.RemoveMember(player);
+                    // If the old team dissolved, count decreased — check reflects current state.
+                    if (TeamRules.WouldExceedMaxTeams())
+                    { player.LaunchMessage(MaxTeamsMsg(), () => { }, "OK", messageDuration); return; }
+                    Team newTeam = new Team();
+                    newTeam.AddMember(otherPlayer);
+                    newTeam.AddMember(player);
+                    this.team = newTeam;
+                    otherPlayer.teamController.team = newTeam;
+                };
                 team.GetLeader().LaunchMessage($"Can I join you", OnOtherPlayerConfirm, () => { }, ("Accept", "Reject"), messageDuration);
                 break;
 
 
             case (Status.Follower, Status.Leader):
-
-                
-                    OnOtherPlayerConfirm = () =>
-                    {
-                        team.RemoveMember(player);
-                        otherPlayer.teamController.team.AddMember(player);
-                        this.team = otherPlayer.teamController.team;
-                    };
-                   
-                
-
-                team.GetLeader().LaunchMessage($"Can I join your team?", OnOtherPlayerConfirm, () =>{ }, ("Yes", "No"), messageDuration);
+                OnOtherPlayerConfirm = () =>
+                {
+                    team.RemoveMember(player);
+                    if (!otherPlayer.teamController.team.AddMember(player))
+                    { player.LaunchMessage(MaxTeamSizeMsg(), () => { }, "OK", messageDuration); return; }
+                    this.team = otherPlayer.teamController.team;
+                };
+                team.GetLeader().LaunchMessage($"Can I join your team?", OnOtherPlayerConfirm, () => { }, ("Yes", "No"), messageDuration);
                 break;
 
             case (Status.Follower, Status.Follower):
@@ -263,14 +228,14 @@ public class TeamController
                 {
                     OnOtherPlayerConfirm = () =>
                     {
-
+                        Team leaderTeam = otherPlayer.teamController.team.GetLeader().teamController.team;
                         team.RemoveMember(player);
-                        otherPlayer.teamController.team.GetLeader().teamController.team.AddMember(player);
+                        if (!leaderTeam.AddMember(player))
+                        { player.LaunchMessage(MaxTeamSizeMsg(), () => { }, "OK", messageDuration); return; }
                         this.team = otherPlayer.teamController.team;
                     };
                     otherPlayer.LaunchMessage($"Can {player.name} join our team", OnOtherPlayerConfirm, "Confirm", messageDuration);
                 };
-
                 team.GetLeader().LaunchMessage($"Can I join your team?", OnLeaderConfirm, () => { }, ("Yes", "No"), messageDuration);
                 break;
 
@@ -292,67 +257,75 @@ public class TeamController
         switch (player.CurrentTeamStatus, otherPlayer.CurrentTeamStatus)
         {
             case (Status.Solo, Status.Solo):
-
                 OnOtherPlayerConfirm = () =>
                 {
+                    if (TeamRules.WouldExceedMaxTeams())
+                    { player.LaunchMessage(MaxTeamsMsg(), () => { }, "OK", messageDuration); return; }
+                    team = new Team();
                     team.AddMember(player);
                     team.AddMember(otherPlayer);
                     otherPlayer.teamController.team = this.team;
                 };
-                team = new Team();
-                otherPlayer.LaunchMessage($"Lets Team up!", OnOtherPlayerConfirm, "Team Up", messageDuration);
-
+                otherPlayer.LaunchMessage($"Lets Team up!", OnOtherPlayerConfirm, () => { }, ("Team Up", "Decline"), messageDuration);
                 break;
             case (Status.Solo, Status.Leader):
                 OnOtherPlayerConfirm = () =>
                 {
                     Debug.Log($"Status.Solo, Status.Leader");
                     otherPlayer.teamController.team.RemoveAllMembers();
+                    if (TeamRules.WouldExceedMaxTeams())
+                    { player.LaunchMessage(MaxTeamsMsg(), () => { }, "OK", messageDuration); return; }
+                    team = new Team();
                     team.AddMember(player);
                     team.AddMember(otherPlayer);
                     otherPlayer.teamController.team = this.team;
                 };
-                otherPlayer.LaunchMessage($"Abandon your Team and Lets Team up!", OnOtherPlayerConfirm, "Team Up", messageDuration);
+                otherPlayer.LaunchMessage($"Abandon your Team and Lets Team up!", OnOtherPlayerConfirm, () => { }, ("Team Up", "Decline"), messageDuration);
                 break;
 
             case (Status.Solo, Status.Follower):
                 OnOtherPlayerConfirm = () =>
                 {
                     otherPlayer.teamController.team.RemoveMember(otherPlayer);
+                    if (TeamRules.WouldExceedMaxTeams())
+                    { player.LaunchMessage(MaxTeamsMsg(), () => { }, "OK", messageDuration); return; }
+                    team = new Team();
                     team.AddMember(player);
                     team.AddMember(otherPlayer);
                     otherPlayer.teamController.team = this.team;
                 };
-                otherPlayer.LaunchMessage($"Leave your Team and Lets Team up!", OnOtherPlayerConfirm, "Team Up", messageDuration);
+                otherPlayer.LaunchMessage($"Leave your Team and Lets Team up!", OnOtherPlayerConfirm, () => { }, ("Team Up", "Decline"), messageDuration);
                 break;
 
 
             case (Status.Leader, Status.Solo):
                 OnOtherPlayerConfirm = () =>
                 {
-
-                    team.AddMember(otherPlayer);
+                    if (!team.AddMember(otherPlayer))
+                    { player.LaunchMessage(MaxTeamSizeMsg(), () => { }, "OK", messageDuration); return; }
                     otherPlayer.teamController.team = this.team;
                 };
-                otherPlayer.LaunchMessage($"Join my Team!", OnOtherPlayerConfirm, "Follow", messageDuration);
+                otherPlayer.LaunchMessage($"Join my Team!", OnOtherPlayerConfirm, () => { }, ("Follow", "Decline"), messageDuration);
                 break;
             case (Status.Leader, Status.Leader):
                 OnOtherPlayerConfirm = () =>
                 {
                     otherPlayer.teamController.team.RemoveAllMembers();
-                    team.AddMember(otherPlayer);
+                    if (!team.AddMember(otherPlayer))
+                    { player.LaunchMessage(MaxTeamSizeMsg(), () => { }, "OK", messageDuration); return; }
                     otherPlayer.teamController.team = this.team;
                 };
-                otherPlayer.LaunchMessage($"Abandon your team and Join my Team!", OnOtherPlayerConfirm, "Follow", messageDuration);
+                otherPlayer.LaunchMessage($"Abandon your team and Join my Team!", OnOtherPlayerConfirm, () => { }, ("Follow", "Decline"), messageDuration);
                 break;
             case (Status.Leader, Status.Follower):
                 OnOtherPlayerConfirm = () =>
                 {
                     otherPlayer.teamController.team.RemoveMember(otherPlayer);
-                    team.AddMember(otherPlayer);
+                    if (!team.AddMember(otherPlayer))
+                    { player.LaunchMessage(MaxTeamSizeMsg(), () => { }, "OK", messageDuration); return; }
                     otherPlayer.teamController.team = this.team;
                 };
-                otherPlayer.LaunchMessage($"Leave your Team and Join My Team!", OnOtherPlayerConfirm, "Follow", messageDuration);
+                otherPlayer.LaunchMessage($"Leave your Team and Join My Team!", OnOtherPlayerConfirm, () => { }, ("Follow", "Decline"), messageDuration);
                 break;
 
 
@@ -367,9 +340,9 @@ public class TeamController
                         otherPlayer.teamController.team = team.GetLeader().teamController.team;
                     };
 
-                    otherPlayer.LaunchMessage($"Our Leader says you can join our team", OnOtherPlayerConfirm, "Follow", messageDuration);
+                    otherPlayer.LaunchMessage($"Our Leader says you can join our team", OnOtherPlayerConfirm, () => { }, ("Follow", "Decline"), messageDuration);
                 };
-                
+
                 team.GetLeader().LaunchMessage($"Can I invite {otherPlayer.playerName} to join our team?", OnLeaderConfirm, () => { }, ("Yes", "No"), messageDuration);
                 break;
         
@@ -384,7 +357,7 @@ public class TeamController
                         team.GetLeader().teamController.Invite(otherPlayer); 
                         otherPlayer.teamController.team = team.GetLeader().teamController.team; 
                     };
-                    otherPlayer.LaunchMessage($"Abandon your team and follow our Leader", OnOtherPlayerConfirm,"Follow", messageDuration);
+                    otherPlayer.LaunchMessage($"Abandon your team and follow our Leader", OnOtherPlayerConfirm, () => { }, ("Follow", "Decline"), messageDuration);
                 };
                 
                 team.GetLeader().LaunchMessage($"Can I invite {otherPlayer.playerName} to join our team?", OnLeaderConfirm, () => { },("Yes", "No") , messageDuration);
@@ -399,7 +372,7 @@ public class TeamController
                         team.GetLeader().teamController.Invite(otherPlayer);
                         otherPlayer.teamController.team = team.GetLeader().teamController.team;
                     };
-                    otherPlayer.LaunchMessage($"Our Leader says you can join our team", OnOtherPlayerConfirm,"Follow", messageDuration);
+                    otherPlayer.LaunchMessage($"Our Leader says you can join our team", OnOtherPlayerConfirm, () => { }, ("Follow", "Decline"), messageDuration);
                 };
                 
                 team.GetLeader().LaunchMessage($"Can I to invite {otherPlayer.playerName} to join our team?", OnLeaderConfirm, () => { },("Yes", "No"), messageDuration);
@@ -423,7 +396,7 @@ public class TeamController
                 { 
                     team.RemoveMember(otherPlayer);
                 };
-               team.GetLeader().LaunchMessage($"Please Kick {otherPlayer} from the team", onLeaderConfirm, "Kick", messageDuration); 
+               team.GetLeader().LaunchMessage($"Please Kick {otherPlayer.playerName} from the team", onLeaderConfirm, "Kick", messageDuration); 
                 break;
             case Status.Solo:                
                 break;
@@ -452,10 +425,10 @@ public class TeamController
             {
                 case Status.Leader:
                     Debug.Log("Called");                    
-                    player.LaunchMessage($"Do you want to quit your team?", () => { team.RemoveAllMembers(); }, () => { }, ("KickMember", "No"), messageDuration);
+                    player.LaunchMessage($"Do you want to quit your team?", () => { team.RemoveAllMembers(); }, () => { }, ("Disband", "No"), messageDuration);
                     break;
-                case Status.Follower:                    
-                    player.LaunchMessage($"Do you want to quit your team?", () => { team.RemoveMember(player); }, () => { }, ("KickMember", "No"), messageDuration);
+                case Status.Follower:
+                    player.LaunchMessage($"Do you want to quit your team?", () => { team.RemoveMember(player); }, () => { }, ("Leave", "No"), messageDuration);
                     break;
                 case Status.Solo:                    
                     break;
@@ -524,25 +497,26 @@ public class TeamController
 
             if (followers.Count >= 1)
             {
+                // RemoveAllMembers nulled this.team — create a fresh team for the mutineer + followers.
+                team = new Team();
                 team.AddMember(player);
-
-
 
                 for (int i = 0; i < followers.Count; i++)
                 {
-
                     team.AddMember(followers[i]);
                 }
             }
             hasVoted = 0;
             voteTally = 0;
             monoBehaviour.StopCoroutine(startMunity);
+            startMunity = null;
         }
         else
         {
             hasVoted = 0;
             voteTally = 0;
             monoBehaviour.StopCoroutine(startMunity);
+            startMunity = null;
         }
 
 
@@ -561,45 +535,29 @@ public class TeamController
         hasVoted++;
     }
 
-    public void Initialize(Player gamePad, LocalPlayerManager player, ref GameObject cameraTarget, PlayerEvents playerEvents)
+public void Initialize(PlayerInput gamePad, LocalPlayerManager player, PlayerEvents playerEvents)
     {
         this.gamePad = gamePad;
         this.player = player;
         this.monoBehaviour = player.GetComponent<MonoBehaviour>();
-        this.cameraTarget = cameraTarget;
         this.CurrentStatus = Status.Solo;
         this.playerEvents = playerEvents;
         this.playerEvents.OnUpdate += OnUpdate;
-        this.playerEvents.TrackTarget += SetTarget;
+        this.playerEvents.OnOrbitTargetChanged += OnOrbitTargetChanged;
         this.playerEvents.OnHitConfirm += OnHitConfirm;
         this.playerEvents.OnHitConfirmPauseEnd += OnHitConfirmPauseEnd;
+        this.onStatusChange += OnStatusChanged;
         isInitialized = true;
     }
-    public void Deactivate()
+public void Deactivate()
     {
+        this.onStatusChange -= OnStatusChanged;
         this.playerEvents.OnUpdate -= OnUpdate;
-        this.playerEvents.TrackTarget -= SetTarget;
+        this.playerEvents.OnOrbitTargetChanged -= OnOrbitTargetChanged;
         this.playerEvents.OnHitConfirm -= OnHitConfirm;
         this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
         this.playerEvents = null;
         isInitialized = false;
-    }
-
-    public void SetTarget(RaycastHit hitTarget, bool isHit)
-    {
-        this.isHit = isHit;
-        this.hitTarget = hitTarget;
-
-        if (isHit)
-        {
-            this.cameraTarget = hitTarget.transform.gameObject;
-            this.targetStaus = hitTarget.transform.GetComponentInParent<LocalPlayerManager>().CurrentTeamStatus;
-        }
-        else
-        {
-            this.cameraTarget = null;
-        }
-        
     }
 
     public void OnHitConfirm((Collider hitbox, Collider hurtbox) hitInfo)
@@ -617,4 +575,21 @@ public class TeamController
     }
 
     
+
+
+void OnOrbitTargetChanged(LocalPlayerManager target, bool isTargeting)
+    {
+        _orbitTarget = target;
+    }
+
+    /// <summary>
+    /// Called whenever this player's team status changes.
+    /// No cursor push needed here — CameraControler polls ActiveSymbol every frame
+    /// while orbit-targeting or follow-aim-locking, so symbol changes propagate
+    /// automatically the next frame after a status change.
+    /// </summary>
+    void OnStatusChanged(Status newStatus)
+    {
+        playerEvents.OnTeamChanged?.Invoke();
+    }
 }

@@ -14,7 +14,7 @@ using System.Collections;
 [Serializable]
 public class UserInterfaceController
 {
-    Rewired.Player gamePad;
+    PlayerInput gamePad;
     Canvas canvas;
     RectTransform MessageBox;
     [SerializeField]
@@ -33,6 +33,7 @@ public class UserInterfaceController
     List<Action> NextMessage = new List<Action>();
     private bool _isHitConfirmPause;
     private PlayerEvents playerEvents;
+    private PlayerStatBarUI _statBarUI = new PlayerStatBarUI();
 
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
@@ -44,12 +45,14 @@ public class UserInterfaceController
     // Update is called once per frame
     public void OnUpdate()
     {
-        if (canvas.enabled)
+        if (canvas.gameObject.activeSelf)
         {
-            if (gamePad.GetButtonDown("X") & buttons[0].gameObject.activeSelf) buttons[0].onClick.Invoke();
-            if (gamePad.GetButtonDown("B") & buttons[1].gameObject.activeSelf) buttons[1].onClick.Invoke();
-            if (gamePad.GetButtonDown("Y") & buttons[2].gameObject.activeSelf) buttons[2].onClick.Invoke();
-            if (gamePad.GetButtonDown("A") & buttons[3].gameObject.activeSelf) buttons[3].onClick.Invoke();
+            // GetUIButtonDown only passes through while Context == Dialog, so these
+            // face-button checks cannot cross-fire into combat systems.
+            if (gamePad.GetUIButtonDown("X") & buttons[0].gameObject.activeSelf) buttons[0].onClick.Invoke();
+            if (gamePad.GetUIButtonDown("B") & buttons[1].gameObject.activeSelf) buttons[1].onClick.Invoke();
+            if (gamePad.GetUIButtonDown("Y") & buttons[2].gameObject.activeSelf) buttons[2].onClick.Invoke();
+            if (gamePad.GetUIButtonDown("A") & buttons[3].gameObject.activeSelf) buttons[3].onClick.Invoke();
         }
 
         //Debug.Log($"{canvas.gameObject.name} is {canvas.gameObject.activeSelf}");
@@ -59,43 +62,74 @@ public class UserInterfaceController
         
     }
 
-    public void Initialize(Camera camera, Canvas canvas, Rewired.Player gamePad, PlayerEvents playerEvents)
+    public void Initialize(Camera camera, Canvas canvas, PlayerInput gamePad, PlayerEvents playerEvents)
     {
         this.gamePad = gamePad;
         this.canvas = canvas;
-        
+
         canvas.renderMode = RenderMode.ScreenSpaceCamera;
         canvas.worldCamera = camera;
         canvas.sortingOrder = 10;
         canvas.planeDistance = 1;
         buttons = new Button[4];
         MessageBox = canvas.transform.Find("MessageBox").GetComponent<RectTransform>();
-        Vector3 newAnchoredPositon = MessageBox.anchoredPosition;
-        newAnchoredPositon.y -= 0;
-        MessageBox.anchoredPosition = newAnchoredPositon;
-        string[] tags = new string[buttons.Length];
-        MessageBox.sizeDelta = new Vector3(3,3,3);
 
-        tags[0] = "Confirm: (X)"; 
-        tags[1] = "Reject: (B)"; 
-        tags[2] = "Confirm: (Y)"; 
-        tags[3] = "Confirm: (A)";
+        // ── MessageBox: centred on screen, sized to hold message + full cross ─
+        // The cross occupies ±(ARM_V + BTN_H/2) = ±68 px vertically.
+        // The message sits ARM_V + BTN_H/2 + gap (15) + half-message-height above centre.
+        // Total needed: ~128 px top + ~83 px bottom → 280 px is comfortable.
+        MessageBox.anchorMin        = new Vector2(0.5f, 0.5f);
+        MessageBox.anchorMax        = new Vector2(0.5f, 0.5f);
+        MessageBox.pivot            = new Vector2(0.5f, 0.5f);
+        MessageBox.anchoredPosition = Vector2.zero;
+        MessageBox.sizeDelta        = new Vector2(370f, 280f);
+        // Keep the prefab's local scale (1.5) — intentional design size.
 
-        for (int i = 0; i < buttons.Length; i++)
-        {
-            buttons[i] = GameObject.FindGameObjectWithTag(tags[i]).GetComponent<Button>();
-        }
-        message = MessageBox.transform.Find("Message").GetComponentInChildren<TextMeshProUGUI>();
+        // ── Message container — the coloured panel above the button cross ─────
+        // BUG FIX: previously the code moved the TMP *child* rect instead of the
+        // container itself, leaving the background panel and the text 100 px apart.
+        // Now we move the container (which holds both the Image background and
+        // the TMP child) and stretch the TMP to fill it completely.
+        RectTransform messageContainerRT = MessageBox.transform.Find("Message").GetComponent<RectTransform>();
+        messageContainerRT.anchorMin        = new Vector2(0.5f, 0.5f);
+        messageContainerRT.anchorMax        = new Vector2(0.5f, 0.5f);
+        messageContainerRT.pivot            = new Vector2(0.5f, 0.5f);
+        // Y=108: top button top-edge is ARM_V+BTN_H/2=68, gap=15, half-height=25 → 108
+        messageContainerRT.anchoredPosition = new Vector2(0f, 108f);
+        messageContainerRT.sizeDelta        = new Vector2(330f, 60f);
 
-        
-        canvas.transform.position = camera.transform.position + (Vector3.forward * 5);
+        // Stretch the TMP to fill the container so it always matches its background.
+        message = messageContainerRT.GetComponentInChildren<TextMeshProUGUI>();
+        RectTransform msgTmpRT  = message.GetComponent<RectTransform>();
+        msgTmpRT.anchorMin        = Vector2.zero;
+        msgTmpRT.anchorMax        = Vector2.one;
+        msgTmpRT.anchoredPosition = Vector2.zero;
+        msgTmpRT.sizeDelta        = Vector2.zero;
+
+        message.enableAutoSizing   = true;
+        message.fontSizeMin        = 12f;
+        message.fontSizeMax        = 22f;
+        message.alignment          = TextAlignmentOptions.Center;
+        message.enableWordWrapping = true;
+
+        // ── Find buttons by name — safer than tag search in multiplayer ───────
+        // Tag search (FindGameObjectWithTag) finds the first match across ALL active
+        // objects in the scene; in a 4-player game it would find another player's
+        // buttons. Name search scoped to MessageBox is always the correct canvas.
+        buttons[0] = MessageBox.transform.Find("Confirm: (X)").GetComponent<Button>();
+        buttons[1] = MessageBox.transform.Find("Reject: (B)").GetComponent<Button>();
+        buttons[2] = MessageBox.transform.Find("Confirm: (Y)").GetComponent<Button>();
+        buttons[3] = MessageBox.transform.Find("Confirm: (A)").GetComponent<Button>();
+
+        // ── Default button layout (repositioned each SetMessage call) ─────────
+        LayoutButtons(2);
 
         //canvas = new GameObject("Canvas",typeof(RectTransform)).AddComponent<Canvas>();
         //canvas.AddComponent<CanvasScaler>();
         //canvas.AddComponent<GraphicRaycaster>();
         //canvas.GetComponent<RectTransform>().sizeDelta = new Vector3(1, 1, 1);
         //canvas.renderMode = RenderMode.ScreenSpaceCamera;
-        //canvas.worldCamera = camera;
+        //canvas.worldCamera = myCamera;
 
         //MessageBox = new GameObject("Message Box", typeof(RectTransform)).GetComponent<RectTransform>();
         //MessageBox.transform.SetParent(canvas.transform);
@@ -148,10 +182,12 @@ public class UserInterfaceController
         this.playerEvents.OnHitConfirm += OnHitConfirm;
         this.playerEvents.OnHitConfirmPauseEnd += OnHitConfirmPauseEnd;
 
+        _statBarUI.Initialize(camera, playerEvents);
     }
     public void Deactivate()
     {
-        
+        _statBarUI.Deactivate();
+
         this.playerEvents.OnUpdate -= OnUpdate;
         this.playerEvents.OnHitConfirm -= OnHitConfirm;
         this.playerEvents.OnHitConfirmPauseEnd -= OnHitConfirmPauseEnd;
@@ -163,6 +199,11 @@ public class UserInterfaceController
         message = null;
 
     }
+    public void SetOwner(LocalPlayerManager owner)
+    {
+        _statBarUI.SetOwner(owner);
+    }
+
     public void SetCanvasName(string playerName)
     {
         if (canvas != null)
@@ -173,6 +214,7 @@ public class UserInterfaceController
             canvas.name = stringBuilder.ToString();
         }
 
+        _statBarUI.SetPlayerName(playerName);
     }
 
     //public void SetMessage(Message message)
@@ -184,20 +226,22 @@ public class UserInterfaceController
     public void SetMessage(string message, UnityAction confirmX, string confirmXButtonText, double messageDuration)
     {
         if (!canvas.gameObject.activeSelf)
-        { 
+        {
+            LayoutButtons(1);
             canvas.gameObject.SetActive(true);
+            playerEvents?.OnDialogStateChanged?.Invoke(true);
             buttons[0].gameObject.SetActive(true);
-            buttons[1].gameObject.SetActive(true);
+            buttons[1].gameObject.SetActive(false);
             buttons[2].gameObject.SetActive(false);
             buttons[3].gameObject.SetActive(false);
 
             this.message.text = message;
-            
+
             buttons[0].onClick.AddListener(confirmX);
             buttons[0].onClick.AddListener(Clear);
             buttons[1].onClick.AddListener(Clear);
-            
-            
+
+
             this.messageDuration = messageDuration;
 
             StringBuilder buttonText = new StringBuilder();
@@ -205,7 +249,7 @@ public class UserInterfaceController
             buttonText.Replace("Confirm", confirmXButtonText);
             buttons[0].gameObject.GetComponentInChildren<TextMeshProUGUI>().text = buttonText.ToString();
 
-            
+
         }
         else
         {
@@ -215,6 +259,7 @@ public class UserInterfaceController
             Action action = () =>
             {
                 canvas.gameObject.SetActive(true);
+                playerEvents?.OnDialogStateChanged?.Invoke(true);
                 buttons[0].gameObject.SetActive(true);
                 buttons[1].gameObject.SetActive(true);
                 buttons[2].gameObject.SetActive(false);
@@ -234,7 +279,7 @@ public class UserInterfaceController
                 buttonText.Replace("Confirm", confirmXButtonText);
                 buttons[0].gameObject.GetComponentInChildren<TextMeshProUGUI>().text = buttonText.ToString();
             };
-               
+
             NextMessage.Add(action);
         }
 
@@ -249,7 +294,9 @@ public class UserInterfaceController
     {
         if (!canvas.gameObject.activeSelf)
         {
+            LayoutButtons(2);
             canvas.gameObject.SetActive(true);
+            playerEvents?.OnDialogStateChanged?.Invoke(true);
             buttons[0].gameObject.SetActive(true);
             buttons[1].gameObject.SetActive(true);
             buttons[2].gameObject.SetActive(false);
@@ -285,6 +332,7 @@ public class UserInterfaceController
             Debug.LogWarning($"Cannot send message when current Session is active");
             Action action = () => {
                 canvas.gameObject.SetActive(true);
+                playerEvents?.OnDialogStateChanged?.Invoke(true);
                 buttons[0].gameObject.SetActive(true);
                 buttons[1].gameObject.SetActive(true);
                 buttons[2].gameObject.SetActive(false);
@@ -323,7 +371,9 @@ public class UserInterfaceController
     {
         if (!canvas.gameObject.activeSelf)
         {
+            LayoutButtons(3);
             canvas.gameObject.SetActive(true);
+            playerEvents?.OnDialogStateChanged?.Invoke(true);
             buttons[0].gameObject.SetActive(true);
             buttons[1].gameObject.SetActive(true);
             buttons[2].gameObject.SetActive(true);
@@ -364,6 +414,7 @@ public class UserInterfaceController
             Debug.LogWarning($"Cannot send message when current Session is active");
             Action action = () => {
                 canvas.gameObject.SetActive(true);
+                playerEvents?.OnDialogStateChanged?.Invoke(true);
                 buttons[0].gameObject.SetActive(true);
                 buttons[1].gameObject.SetActive(true);
                 buttons[2].gameObject.SetActive(true);
@@ -404,7 +455,9 @@ public class UserInterfaceController
     {
         if (!canvas.gameObject.activeSelf)
         {
+            LayoutButtons(4);
             canvas.gameObject.SetActive(true);
+            playerEvents?.OnDialogStateChanged?.Invoke(true);
             buttons[0].gameObject.SetActive(true);
             buttons[1].gameObject.SetActive(true);
             buttons[2].gameObject.SetActive(true);
@@ -451,6 +504,7 @@ public class UserInterfaceController
             Debug.LogWarning($"Cannot send message when current Session is active");
             Action action = () => {
                 canvas.gameObject.SetActive(true);
+                playerEvents?.OnDialogStateChanged?.Invoke(true);
                 buttons[0].gameObject.SetActive(true);
                 buttons[1].gameObject.SetActive(true);
                 buttons[2].gameObject.SetActive(true);
@@ -499,25 +553,97 @@ public class UserInterfaceController
 
 
 
+    // ── Layout helpers ────────────────────────────────────────────────────────
+    // Arranges buttons in a D-pad / + shape centred below the message text.
+    //
+    //  Slot mapping:  buttons[0] = X → Left
+    //                 buttons[1] = B → Right
+    //                 buttons[2] = Y → Top
+    //                 buttons[3] = A → Bottom
+    //
+    //  activeCount   visible slots
+    //       1        X centred
+    //       2        X left  |  B right
+    //       3        X left  |  Y top  |  B right
+    //       4        full +  (all four arms)
+    //
+    void LayoutButtons(int activeCount)
+    {
+        const float ARM_H = 105f;  // centre → left/right button centre
+        const float ARM_V =  50f;  // centre → top/bottom button centre
+        const float BTN_W = 120f;
+        const float BTN_H =  36f;
+
+        switch (activeCount)
+        {
+            case 1:
+                // Single confirm — centred in the cross area
+                SetBtn(0,      0f,    0f, BTN_W + 40f, BTN_H);
+                break;
+
+            case 2:
+                // X left, B right
+                SetBtn(0, -ARM_H,    0f, BTN_W, BTN_H);
+                SetBtn(1,  ARM_H,    0f, BTN_W, BTN_H);
+                break;
+
+            case 3:
+                // X left, Y top, B right — no bottom arm
+                SetBtn(0, -ARM_H,    0f, BTN_W, BTN_H);
+                SetBtn(2,     0f, ARM_V, BTN_W, BTN_H);
+                SetBtn(1,  ARM_H,    0f, BTN_W, BTN_H);
+                break;
+
+            default:
+                // Full + shape
+                SetBtn(0, -ARM_H,     0f, BTN_W, BTN_H);  // X left
+                SetBtn(1,  ARM_H,     0f, BTN_W, BTN_H);  // B right
+                SetBtn(2,     0f,  ARM_V, BTN_W, BTN_H);  // Y top
+                SetBtn(3,     0f, -ARM_V, BTN_W, BTN_H);  // A bottom
+                break;
+        }
+    }
+
+    void SetBtn(int idx, float x, float y, float w, float h)
+    {
+        var rt              = buttons[idx].GetComponent<RectTransform>();
+        rt.anchoredPosition = new Vector2(x, y);
+        rt.sizeDelta        = new Vector2(w, h);
+
+        var lbl = buttons[idx].GetComponentInChildren<TextMeshProUGUI>();
+        if (lbl != null)
+        {
+            lbl.enableAutoSizing = true;
+            lbl.fontSizeMin      = 10f;
+            lbl.fontSizeMax      = 18f;
+            lbl.alignment        = TextAlignmentOptions.Center;
+        }
+    }
+
     public void Clear()
     {
         this.message.text = string.Empty;
 
         for (int i = 0; i < buttons.Length; i++)
         {
-           
-                buttons[i].onClick.RemoveAllListeners();
-            
+            buttons[i].onClick.RemoveAllListeners();
         }
         timer = 0;
         canvas.gameObject.SetActive(false);
+
         if (NextMessage.Count > 0)
         {
-            NextMessage[0]?.Invoke();
-            NextMessage?.RemoveAt(0);
-            
+            // Fire closed first so the state machine returns to the previous state
+            // (Battle/Prone), then the queued message immediately re-opens dialog.
+            playerEvents?.OnDialogStateChanged?.Invoke(false);
+            NextMessage[0]?.Invoke();   // activates canvas and fires OnDialogStateChanged(true) internally
+            NextMessage.RemoveAt(0);
         }
-
+        else
+        {
+            // No queued message — dialog is truly closed.
+            playerEvents?.OnDialogStateChanged?.Invoke(false);
+        }
     }
     public Canvas GetCanvas()
     {
